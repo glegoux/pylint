@@ -1,42 +1,40 @@
-# Copyright (c) 2003-2014 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2006-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2011-2014 Google, Inc.
+# Copyright (c) 2013-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2014 Michal Nowikowski <godfryd@gmail.com>
+# Copyright (c) 2015 Radu Ciorba <radu@devrandom.ro>
+# Copyright (c) 2015 Dmitry Pribysh <dmand@yandex.ru>
+# Copyright (c) 2016 Ashley Whetter <ashley@awhetter.co.uk>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """variables checkers for Python code
 """
+import copy
+import itertools
 import os
 import sys
 import re
-from copy import copy
+try:
+    from functools import lru_cache
+except ImportError:
+    from backports.functools_lru_cache import lru_cache
 
 import six
 
 import astroid
+from astroid import decorators
 from astroid import modutils
 from pylint.interfaces import IAstroidChecker, INFERENCE, INFERENCE_FAILURE, HIGH
 from pylint.utils import get_global_option
 from pylint.checkers import BaseChecker
-from pylint.checkers.utils import (
-    PYMETHODS, is_ancestor_name, is_builtin,
-    is_defined_before, is_error, is_func_default, is_func_decorator,
-    assign_parent, check_messages, is_inside_except, clobber_in_except,
-    get_all_elements, has_known_bases, node_ignores_exception,
-    is_inside_abstract_class, is_comprehension, is_iterable,
-    safe_infer)
+from pylint.checkers import utils
 
 SPECIAL_OBJ = re.compile("^_{2}[a-z]+_{2}$")
 FUTURE = '__future__'
+# regexp for ignored argument name
+IGNORED_ARGUMENT_NAMES = re.compile('_.*')
 PY3K = sys.version_info >= (3, 0)
 
 
@@ -56,8 +54,11 @@ def _is_from_future_import(stmt, name):
 def in_for_else_branch(parent, stmt):
     """Returns True if stmt in inside the else branch for a parent For stmt."""
     return (isinstance(parent, astroid.For) and
-            any(else_stmt.parent_of(stmt) for else_stmt in parent.orelse))
+            any(else_stmt.parent_of(stmt) or else_stmt == stmt
+                for else_stmt in parent.orelse))
 
+
+@lru_cache(maxsize=1000)
 def overridden_method(klass, name):
     """get overridden method if any"""
     try:
@@ -215,6 +216,11 @@ def _import_name_is_global(stmt, global_names):
     return False
 
 
+def _flattened_scope_names(iterator):
+    values = (set(stmt.names) for stmt in iterator)
+    return set(itertools.chain.from_iterable(values))
+
+
 MSGS = {
     'E0601': ('Using variable %r before assignment',
               'used-before-assignment',
@@ -245,7 +251,7 @@ MSGS = {
               'global-statement',
               'Used when you use the "global" statement to update a global \
               variable. Pylint just try to discourage this \
-              usage. That doesn\'t mean you can not use it !'),
+              usage. That doesn\'t mean you cannot use it !'),
     'W0604': ('Using the global statement at the module level', # W0103
               'global-at-module-level',
               'Used when you use the "global" statement at the module level \
@@ -319,18 +325,19 @@ class VariablesChecker(BaseChecker):
     priority = -1
     options = (("init-import",
                 {'default': 0, 'type' : 'yn', 'metavar' : '<y_or_n>',
-                 'help' : 'Tells whether we should check for unused import in \
-__init__ files.'}),
+                 'help' : 'Tells whether we should check for unused import in '
+                          '__init__ files.'}),
                ("dummy-variables-rgx",
-                {'default': ('_$|dummy'),
+                {'default': ('_+$|(_[a-zA-Z0-9_]*[a-zA-Z0-9]+?$)|dummy'),
                  'type' :'regexp', 'metavar' : '<regexp>',
-                 'help' : 'A regular expression matching the name of dummy \
-variables (i.e. expectedly not used).'}),
+                 'help' : 'A regular expression matching the name of dummy '
+                          'variables (i.e. expectedly not used).'}),
                ("additional-builtins",
                 {'default': (), 'type' : 'csv',
                  'metavar' : '<comma separated list>',
-                 'help' : 'List of additional names supposed to be defined in \
-builtins. Remember that you should avoid to define new builtins when possible.'
+                 'help' : 'List of additional names supposed to be defined in '
+                          'builtins. Remember that you should avoid to define new builtins '
+                          'when possible.'
                 }),
                ("callbacks",
                 {'default' : ('cb_', '_cb'), 'type' : 'csv',
@@ -338,26 +345,75 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                  'help' : 'List of strings which can identify a callback '
                           'function by name. A callback name must start or '
                           'end with one of those strings.'}
-               )
+               ),
+               ("redefining-builtins-modules",
+                {'default': ('six.moves', 'future.builtins'), 'type': 'csv',
+                 'metavar': '<comma separated list>',
+                 'help': 'List of qualified module names which can have objects '
+                         'that can redefine builtins.'}
+               ),
+               ('ignored-argument-names',
+                {'default' : IGNORED_ARGUMENT_NAMES,
+                 'type' :'regexp', 'metavar' : '<regexp>',
+                 'help' : 'Argument names that match this expression will be '
+                          'ignored. Default to name with leading underscore'}
+               ),
               )
     def __init__(self, linter=None):
         BaseChecker.__init__(self, linter)
         self._to_consume = None  # list of tuples: (to_consume:dict, consumed:dict, scope_type:str)
         self._checking_mod_attr = None
+        self._loop_variables = []
+
+    # Relying on other checker's options, which might not have been initialized yet.
+    @decorators.cachedproperty
+    def _analyse_fallback_blocks(self):
+        return get_global_option(self, 'analyse-fallback-blocks', default=False)
+
+    @decorators.cachedproperty
+    def _ignored_modules(self):
+        return get_global_option(self, 'ignored-modules', default=[])
+
+
+    @utils.check_messages('redefined-outer-name')
+    def visit_for(self, node):
+        assigned_to = [var.name for var in node.target.nodes_of_class(astroid.AssignName)]
+
+        # Only check variables that are used
+        dummy_rgx = self.config.dummy_variables_rgx
+        assigned_to = [var for var in assigned_to if not dummy_rgx.match(var)]
+
+        for variable in assigned_to:
+            for outer_for, outer_variables in self._loop_variables:
+                if (variable in outer_variables
+                        and not in_for_else_branch(outer_for, node)):
+                    self.add_message(
+                        'redefined-outer-name',
+                        args=(variable, outer_for.fromlineno),
+                        node=node
+                    )
+                    break
+
+        self._loop_variables.append((node, assigned_to))
+
+    @utils.check_messages('redefined-outer-name')
+    def leave_for(self, _):
+        self._loop_variables.pop()
 
     def visit_module(self, node):
         """visit module : update consumption analysis variable
         checks globals doesn't overrides builtins
         """
-        self._to_consume = [(copy(node.locals), {}, 'module')]
+        self._to_consume = [(copy.copy(node.locals), {}, 'module')]
         for name, stmts in six.iteritems(node.locals):
-            if is_builtin(name) and not is_inside_except(stmts[0]):
-                # do not print Redefining builtin for additional builtins
+            if utils.is_builtin(name) and not utils.is_inside_except(stmts[0]):
+                if self._should_ignore_redefined_builtin(stmts[0]):
+                    continue
                 self.add_message('redefined-builtin', args=name, node=stmts[0])
 
-    @check_messages('unused-import', 'unused-wildcard-import',
-                    'redefined-builtin', 'undefined-all-variable',
-                    'invalid-all-object')
+    @utils.check_messages('unused-import', 'unused-wildcard-import',
+                          'redefined-builtin', 'undefined-all-variable',
+                          'invalid-all-object')
     def leave_module(self, node):
         """leave module: check globals
         """
@@ -383,6 +439,8 @@ builtins. Remember that you should avoid to define new builtins when possible.'
             except astroid.InferenceError:
                 continue
             if elt_name is astroid.YES:
+                continue
+            if not elt_name.parent:
                 continue
 
             if (not isinstance(elt_name, astroid.Const)
@@ -474,7 +532,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
     def visit_classdef(self, node):
         """visit class: update consumption analysis variable
         """
-        self._to_consume.append((copy(node.locals), {}, 'class'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'class'))
 
     def leave_classdef(self, _):
         """leave class: update consumption analysis variable
@@ -485,7 +543,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
     def visit_lambda(self, node):
         """visit lambda: update consumption analysis variable
         """
-        self._to_consume.append((copy(node.locals), {}, 'lambda'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'lambda'))
 
     def leave_lambda(self, _):
         """leave lambda: update consumption analysis variable
@@ -496,7 +554,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
     def visit_generatorexp(self, node):
         """visit genexpr: update consumption analysis variable
         """
-        self._to_consume.append((copy(node.locals), {}, 'comprehension'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'comprehension'))
 
     def leave_generatorexp(self, _):
         """leave genexpr: update consumption analysis variable
@@ -507,7 +565,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
     def visit_dictcomp(self, node):
         """visit dictcomp: update consumption analysis variable
         """
-        self._to_consume.append((copy(node.locals), {}, 'comprehension'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'comprehension'))
 
     def leave_dictcomp(self, _):
         """leave dictcomp: update consumption analysis variable
@@ -518,7 +576,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
     def visit_setcomp(self, node):
         """visit setcomp: update consumption analysis variable
         """
-        self._to_consume.append((copy(node.locals), {}, 'comprehension'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'comprehension'))
 
     def leave_setcomp(self, _):
         """leave setcomp: update consumption analysis variable
@@ -529,13 +587,13 @@ builtins. Remember that you should avoid to define new builtins when possible.'
     def visit_functiondef(self, node):
         """visit function: update consumption analysis variable and check locals
         """
-        self._to_consume.append((copy(node.locals), {}, 'function'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'function'))
         if not (self.linter.is_message_enabled('redefined-outer-name') or
                 self.linter.is_message_enabled('redefined-builtin')):
             return
         globs = node.root().globals
         for name, stmt in node.items():
-            if is_inside_except(stmt):
+            if utils.is_inside_except(stmt):
                 continue
             if name in globs and not isinstance(stmt, astroid.Global):
                 definition = globs[name][0]
@@ -549,9 +607,71 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                 if not dummy_rgx.match(name):
                     self.add_message('redefined-outer-name',
                                      args=(name, line), node=stmt)
-            elif is_builtin(name):
+
+            elif utils.is_builtin(name) and not self._should_ignore_redefined_builtin(stmt):
                 # do not print Redefining builtin for additional builtins
                 self.add_message('redefined-builtin', args=name, node=stmt)
+
+    def _is_name_ignored(self, stmt, name):
+        authorized_rgx = self.config.dummy_variables_rgx
+        if (isinstance(stmt, astroid.AssignName)
+                and isinstance(stmt.parent, astroid.Arguments)):
+            regex = self.config.ignored_argument_names
+        else:
+            regex = authorized_rgx
+        return regex and regex.match(name)
+
+    def _check_is_unused(self, name, node, stmt, global_names, nonlocal_names):
+        # Ignore some special names specified by user configuration.
+        if self._is_name_ignored(stmt, name):
+            return
+
+        # Ignore names imported by the global statement.
+        # FIXME: should only ignore them if it's assigned latter
+        if isinstance(stmt, astroid.Global):
+            return
+        if isinstance(stmt, (astroid.Import, astroid.ImportFrom)):
+            # Detect imports, assigned to global statements.
+            if global_names and _import_name_is_global(stmt, global_names):
+                return
+
+        argnames = node.argnames()
+        is_method = node.is_method()
+        klass = node.parent.frame()
+        if is_method and isinstance(klass, astroid.ClassDef):
+            confidence = INFERENCE if utils.has_known_bases(klass) else INFERENCE_FAILURE
+        else:
+            confidence = HIGH
+
+        # Care about functions with unknown argument (builtins)
+        if name in argnames:
+            if is_method:
+                # Don't warn for the first argument of a (non static) method
+                if node.type != 'staticmethod' and name == argnames[0]:
+                    return
+                # Don't warn for argument of an overridden method
+                overridden = overridden_method(klass, node.name)
+                if overridden is not None and name in overridden.argnames():
+                    return
+                if node.name in utils.PYMETHODS and node.name not in ('__init__', '__new__'):
+                    return
+            # Don't check callback arguments
+            if any(node.name.startswith(cb) or node.name.endswith(cb)
+                   for cb in self.config.callbacks):
+                return
+            self.add_message('unused-argument', args=name, node=stmt,
+                             confidence=confidence)
+        else:
+            if stmt.parent and isinstance(stmt.parent, astroid.Assign):
+                if name in nonlocal_names:
+                    return
+
+            if isinstance(stmt, astroid.Import):
+                # Need the complete name, which we don't have in .locals.
+                qname, asname = stmt.names[0]
+                name = asname or qname
+
+            self.add_message('unused-variable', args=name, node=stmt)
 
     def leave_functiondef(self, node):
         """leave function: check function's locals are consumed"""
@@ -559,80 +679,35 @@ builtins. Remember that you should avoid to define new builtins when possible.'
         if not (self.linter.is_message_enabled('unused-variable') or
                 self.linter.is_message_enabled('unused-argument')):
             return
-        # don't check arguments of function which are only raising an exception
-        if is_error(node):
+
+        # Don't check arguments of function which are only raising an exception.
+        if utils.is_error(node):
             return
-        # don't check arguments of abstract methods or within an interface
+
+        # Don't check arguments of abstract methods or within an interface.
         is_method = node.is_method()
-        klass = node.parent.frame()
         if is_method and node.is_abstract():
             return
-        if is_method and isinstance(klass, astroid.ClassDef):
-            confidence = INFERENCE if has_known_bases(klass) else INFERENCE_FAILURE
-        else:
-            confidence = HIGH
-        authorized_rgx = self.config.dummy_variables_rgx
-        called_overridden = False
-        argnames = node.argnames()
-        global_names = set()
-        nonlocal_names = set()
-        for global_stmt in node.nodes_of_class(astroid.Global):
-            global_names.update(set(global_stmt.names))
-        for nonlocal_stmt in node.nodes_of_class(astroid.Nonlocal):
-            nonlocal_names.update(set(nonlocal_stmt.names))
+
+        global_names = _flattened_scope_names(node.nodes_of_class(astroid.Global))
+        nonlocal_names = _flattened_scope_names(node.nodes_of_class(astroid.Nonlocal))
 
         for name, stmts in six.iteritems(not_consumed):
-            # ignore some special names specified by user configuration
-            if authorized_rgx.match(name):
-                continue
-            # ignore names imported by the global statement
-            # FIXME: should only ignore them if it's assigned latter
-            stmt = stmts[0]
-            if isinstance(stmt, astroid.Global):
-                continue
-            if isinstance(stmt, (astroid.Import, astroid.ImportFrom)):
-                # Detect imports, assigned to global statements.
-                if global_names and _import_name_is_global(stmt, global_names):
-                    continue
-
-            # care about functions with unknown argument (builtins)
-            if name in argnames:
-                if is_method:
-                    # don't warn for the first argument of a (non static) method
-                    if node.type != 'staticmethod' and name == argnames[0]:
-                        continue
-                    # don't warn for argument of an overridden method
-                    if not called_overridden:
-                        overridden = overridden_method(klass, node.name)
-                        called_overridden = True
-                    if overridden is not None and name in overridden.argnames():
-                        continue
-                    if node.name in PYMETHODS and node.name not in ('__init__', '__new__'):
-                        continue
-                # don't check callback arguments
-                if any(node.name.startswith(cb) or node.name.endswith(cb)
-                       for cb in self.config.callbacks):
-                    continue
-                self.add_message('unused-argument', args=name, node=stmt,
-                                 confidence=confidence)
-            else:
-                if stmt.parent and isinstance(stmt.parent, astroid.Assign):
-                    if name in nonlocal_names:
-                        continue
-                self.add_message('unused-variable', args=name, node=stmt)
+            self._check_is_unused(name, node, stmts[0], global_names, nonlocal_names)
 
     visit_asyncfunctiondef = visit_functiondef
     leave_asyncfunctiondef = leave_functiondef
 
-    @check_messages('global-variable-undefined', 'global-variable-not-assigned',
-                    'global-statement', 'global-at-module-level',
-                    'redefined-builtin')
+    @utils.check_messages('global-variable-undefined', 'global-variable-not-assigned',
+                          'global-statement', 'global-at-module-level',
+                          'redefined-builtin')
     def visit_global(self, node):
         """check names imported exists in the global scope"""
         frame = node.frame()
         if isinstance(frame, astroid.Module):
             self.add_message('global-at-module-level', node=node)
             return
+
         module = frame.root()
         default_message = True
         for name in node.names:
@@ -641,23 +716,16 @@ builtins. Remember that you should avoid to define new builtins when possible.'
             except astroid.NotFoundError:
                 # unassigned global, skip
                 assign_nodes = []
-            for anode in assign_nodes:
-                if anode.parent is None:
-                    # node returned for builtin attribute such as __file__,
-                    # __doc__, etc...
-                    continue
-                if anode.frame() is frame:
-                    # same scope level assignment
-                    break
-            else:
-                if not _find_frame_imports(name, frame):
-                    self.add_message('global-variable-not-assigned',
-                                     args=name, node=node)
-                default_message = False
+
             if not assign_nodes:
+                self.add_message('global-variable-not-assigned',
+                                 args=name, node=node)
+                default_message = False
                 continue
+
             for anode in assign_nodes:
-                if anode.parent is None:
+                if (isinstance(anode, astroid.AssignName)
+                        and anode.name in module.special_attributes):
                     self.add_message('redefined-builtin', args=name, node=node)
                     break
                 if anode.frame() is module:
@@ -667,6 +735,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                 # global undefined at the module scope
                 self.add_message('global-variable-undefined', args=name, node=node)
                 default_message = False
+
         if default_message:
             self.add_message('global-statement', node=node)
 
@@ -734,10 +803,15 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                     and assign.statement() is not node.statement()):
                 self.add_message('undefined-loop-variable', args=name, node=node)
 
-    @check_messages('redefine-in-handler')
+    def _should_ignore_redefined_builtin(self, stmt):
+        if not isinstance(stmt, astroid.ImportFrom):
+            return False
+        return stmt.modname in self.config.redefining_builtins_modules
+
+    @utils.check_messages('redefine-in-handler')
     def visit_excepthandler(self, node):
-        for name in get_all_elements(node.name):
-            clobbering, args = clobber_in_except(name)
+        for name in utils.get_all_elements(node.name):
+            clobbering, args = utils.clobber_in_except(name)
             if clobbering:
                 self.add_message('redefine-in-handler', args=args, node=name)
 
@@ -869,7 +943,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                      in_annotation_or_default) and
                     name in frame_locals)
 
-    @check_messages(*(MSGS.keys()))
+    @utils.check_messages(*(MSGS.keys()))
     def visit_name(self, node):
         """check that a name is defined if the current scope and doesn't
         redefine a built-in
@@ -884,8 +958,8 @@ builtins. Remember that you should avoid to define new builtins when possible.'
         # if the name node is used as a function default argument's value or as
         # a decorator, then start from the parent frame of the function instead
         # of the function frame - and thus open an inner class scope
-        if (is_func_default(node) or is_func_decorator(node)
-                or is_ancestor_name(frame, node)):
+        if (utils.is_func_default(node) or utils.is_func_decorator(node)
+                or utils.is_ancestor_name(frame, node)):
             start_index = len(self._to_consume) - 2
         else:
             start_index = len(self._to_consume) - 1
@@ -907,7 +981,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
             # the name has already been consumed, only check it's not a loop
             # variable used outside the loop
             if name in consumed:
-                defnode = assign_parent(consumed[name][0])
+                defnode = utils.assign_parent(consumed[name][0])
                 self._check_late_binding_closure(node, defnode)
                 self._loopvar_name(node, name)
                 break
@@ -917,7 +991,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
             else:
                 continue
             # checks for use before assignment
-            defnode = assign_parent(to_consume[name][0])
+            defnode = utils.assign_parent(to_consume[name][0])
             if defnode is not None:
                 self._check_late_binding_closure(node, defnode)
                 defstmt = defnode.statement()
@@ -934,7 +1008,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                     base_scope_type, recursive_klass)
 
                 if (maybee0601
-                        and not is_defined_before(node)
+                        and not utils.is_defined_before(node)
                         and not astroid.are_exclusive(stmt, defstmt, ('NameError',
                                                                       'Exception',
                                                                       'BaseException'))):
@@ -949,7 +1023,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                             or defined_by_stmt
                             or annotation_return
                             or isinstance(defstmt, astroid.Delete)):
-                        if not node_ignores_exception(node, NameError):
+                        if not utils.node_ignores_exception(node, NameError):
                             self.add_message('undefined-variable', args=name,
                                              node=node)
                     elif base_scope_type != 'lambda':
@@ -984,15 +1058,15 @@ builtins. Remember that you should avoid to define new builtins when possible.'
         else:
             # we have not found the name, if it isn't a builtin, that's an
             # undefined name !
-            if not (name in astroid.Module.scope_attrs or is_builtin(name)
+            if not (name in astroid.Module.scope_attrs or utils.is_builtin(name)
                     or name in self.config.additional_builtins):
-                if not node_ignores_exception(node, NameError):
+                if not utils.node_ignores_exception(node, NameError):
                     self.add_message('undefined-variable', args=name, node=node)
 
-    @check_messages('no-name-in-module')
+    @utils.check_messages('no-name-in-module')
     def visit_import(self, node):
         """check modules attribute accesses"""
-        if node_ignores_exception(node, ImportError):
+        if not self._analyse_fallback_blocks and utils.is_from_fallback_block(node):
             # No need to verify this, since ImportError is already
             # handled by the client code.
             return
@@ -1005,10 +1079,10 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                 continue
             self._check_module_attrs(node, module, parts[1:])
 
-    @check_messages('no-name-in-module')
+    @utils.check_messages('no-name-in-module')
     def visit_importfrom(self, node):
         """check modules attribute accesses"""
-        if node_ignores_exception(node, ImportError):
+        if not self._analyse_fallback_blocks and utils.is_from_fallback_block(node):
             # No need to verify this, since ImportError is already
             # handled by the client code.
             return
@@ -1026,7 +1100,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                 continue
             self._check_module_attrs(node, module, name.split('.'))
 
-    @check_messages('unbalanced-tuple-unpacking', 'unpacking-non-sequence')
+    @utils.check_messages('unbalanced-tuple-unpacking', 'unpacking-non-sequence')
     def visit_assign(self, node):
         """Check unbalanced tuple unpacking for assignments
         and unpacking non-sequences.
@@ -1036,7 +1110,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
 
         targets = node.targets[0].itered()
         try:
-            infered = safe_infer(node.value)
+            infered = utils.safe_infer(node.value)
             if infered is not None:
                 self._check_unpacking(infered, node, targets)
         except astroid.InferenceError:
@@ -1046,9 +1120,9 @@ builtins. Remember that you should avoid to define new builtins when possible.'
         """ Check for unbalanced tuple unpacking
         and unpacking non sequences.
         """
-        if is_inside_abstract_class(node):
+        if utils.is_inside_abstract_class(node):
             return
-        if is_comprehension(node):
+        if utils.is_comprehension(node):
             return
         if infered is astroid.YES:
             return
@@ -1071,7 +1145,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                                        len(values)))
         # attempt to check unpacking may be possible (ie RHS is iterable)
         else:
-            if not is_iterable(infered):
+            if not utils.is_iterable(infered):
                 self.add_message('unpacking-non-sequence', node=node,
                                  args=(_get_unpacking_extra_info(node, infered),))
 
@@ -1082,8 +1156,6 @@ builtins. Remember that you should avoid to define new builtins when possible.'
         if the latest access name corresponds to a module, return it
         """
         assert isinstance(module, astroid.Module), module
-        ignored_modules = get_global_option(self, 'ignored-modules',
-                                            default=[])
         while module_names:
             name = module_names.pop(0)
             if name == '__dict__':
@@ -1094,7 +1166,7 @@ builtins. Remember that you should avoid to define new builtins when possible.'
                 if module is astroid.YES:
                     return None
             except astroid.NotFoundError:
-                if module.name in ignored_modules:
+                if module.name in self._ignored_modules:
                     return None
                 self.add_message('no-name-in-module',
                                  args=(name, module.name), node=node)
@@ -1120,7 +1192,7 @@ class VariablesChecker3k(VariablesChecker):
     def visit_listcomp(self, node):
         """visit dictcomp: update consumption analysis variable
         """
-        self._to_consume.append((copy(node.locals), {}, 'comprehension'))
+        self._to_consume.append((copy.copy(node.locals), {}, 'comprehension'))
 
     def leave_listcomp(self, _):
         """leave dictcomp: update consumption analysis variable
@@ -1167,7 +1239,7 @@ class VariablesChecker3k(VariablesChecker):
 
                 if name is not None:
                     if not (name in astroid.Module.scope_attrs or
-                            is_builtin(name) or
+                            utils.is_builtin(name) or
                             name in self.config.additional_builtins or
                             name in node.locals):
                         self.add_message('undefined-variable',

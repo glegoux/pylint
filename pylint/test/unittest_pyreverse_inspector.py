@@ -1,18 +1,8 @@
-# Copyright (c) 2003-2015 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-#
-# You should have received a copy of the GNU Lesser General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+# Copyright (c) 2015-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """
  for the visitors.diadefs module
 """
@@ -23,7 +13,6 @@ import astroid
 from astroid import nodes
 from astroid import bases
 from astroid import manager
-from astroid import test_utils
 
 from pylint.pyreverse import inspector
 from unittest_pyreverse_writer import get_project
@@ -77,7 +66,7 @@ class LinkerTest(unittest.TestCase):
         self.assertIs(type_dict['_id'][0], astroid.YES)
 
     def test_concat_interfaces(self):
-        cls = test_utils.extract_node('''
+        cls = astroid.extract_node('''
             class IMachin: pass
 
             class Correct2:

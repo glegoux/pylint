@@ -59,7 +59,7 @@ disable=invalid-name,protected-access,fixme,too-many-branches,
         import-error,too-many-lines,too-many-instance-attributes,
         too-many-public-methods,duplicate-code,broad-except,
         redefined-builtin,anomalous-backslash-in-string,
-        missing-docstring,no-member,bad-builtin,
+        missing-docstring,no-member,
         # Crashes, see #743.
         redefined-variable-type
 
@@ -252,6 +252,9 @@ no-docstring-rgx=__.*__
 # ones are exempt.
 docstring-min-length=-1
 
+# List of decorators that define properties, such as abc.abstractproperty.
+property-classes=abc.abstractproperty
+
 
 [TYPECHECK]
 
@@ -266,12 +269,16 @@ ignored-modules=
 
 # List of classes names for which member attributes should not be checked
 # (useful for classes with attributes dynamically set).
-ignored-classes=SQLObject, optparse.Values
+ignored-classes=SQLObject, optparse.Values, thread._local, _thread._local
 
 # List of members which are set dynamically and missed by pylint inference
 # system, and so shouldn't trigger E1101 when accessed. Python regular
 # expressions are accepted.
 generated-members=REQUEST,acl_users,aq_parent
+
+# List of decorators that create context managers from functions, such as
+# contextlib.contextmanager.
+contextmanager-decorators=contextlib.contextmanager
 
 
 [SPELLING]

@@ -1,16 +1,9 @@
-# Copyright (c) 2003-2014 LOGILAB S.A. (Paris, FRANCE).
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2013-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 import os
 from os.path import join, dirname, abspath
 import unittest
@@ -23,7 +16,6 @@ from pylint.lint import PyLinter
 from pylint import checkers
 from pylint.reporters import BaseReporter
 from pylint.reporters.text import TextReporter, ParseableTextReporter
-from pylint.reporters.html import HTMLReporter
 from pylint.reporters.ureports.nodes import Section
 
 
@@ -78,101 +70,14 @@ class PyLinterTC(unittest.TestCase):
                                   '0123:1: [C0301(line-too-long), ] '
                                   'Line too long (1/2)\n')
 
-    def test_html_reporter_msg_template(self):
-        expected = '''
-<html>
-<body>
-<div>
-<div>
-<h2>Messages</h2>
-<table>
-<tr class="header">
-<th>category</th>
-<th>msg_id</th>
-</tr>
-<tr class="even">
-<td>warning</td>
-<td>W0332</td>
-</tr>
-</table>
-</div>
-</div>
-</body>
-</html>'''.strip().splitlines()
-        output = six.StringIO()
-        linter = PyLinter(reporter=HTMLReporter())
-        checkers.initialize(linter)
-        linter.config.persistent = 0
-        linter.reporter.set_output(output)
-        linter.set_option('msg-template', '{category}{msg_id}')
-        linter.open()
-        linter.set_current_module('0123')
-        linter.add_message('lowercase-l-suffix', line=1)
-        linter.reporter.display_messages(Section())
-        self.assertEqual(output.getvalue().splitlines(), expected)
-
-    @unittest.expectedFailure
-    def test_html_reporter_type(self):
-        # Integration test for issue #263
-        # https://bitbucket.org/logilab/pylint/issue/263/html-report-type-problems
-        expected = '''<html>
-<body>
-<div>
-<div>
-<h2>Messages</h2>
-<table>
-<tr class="header">
-<th>type</th>
-<th>module</th>
-<th>object</th>
-<th>line</th>
-<th>col_offset</th>
-<th>message</th>
-</tr>
-<tr class="even">
-<td>convention</td>
-<td>0123</td>
-<td>&#160;</td>
-<td>1</td>
-<td>0</td>
-<td>Exactly one space required before comparison
-a&lt; 5: print "zero"</td>
-</tr>
-</table>
-</div>
-</div>
-</body>
-</html>
-'''
-        output = six.StringIO()
-        linter = PyLinter(reporter=HTMLReporter())
-        checkers.initialize(linter)
-        linter.config.persistent = 0
-        linter.reporter.set_output(output)
-        linter.open()
-        linter.set_current_module('0123')
-        linter.add_message('bad-whitespace', line=1,
-                           args=('Exactly one', 'required', 'before',
-                                 'comparison', 'a< 5: print "zero"'))
-        linter.reporter.display_reports(Section())
-        self.assertMultiLineEqual(output.getvalue(), expected)
-
     def test_display_results_is_renamed(self):
         class CustomReporter(TextReporter):
             def _display(self, layout):
                 return None
 
         reporter = CustomReporter()
-        if __pkginfo__.numversion >= (2, 0):
-            with self.assertRaises(AttributeError):
-                reporter.display_results
-        else:
-            with warnings.catch_warnings(record=True) as cm:
-                warnings.simplefilter("always")
-                reporter.display_results(Section())
-
-            self.assertEqual(len(cm), 1)
-            self.assertIsInstance(cm[0].message, DeprecationWarning)
+        with self.assertRaises(AttributeError):
+            reporter.display_results
 
 
 if __name__ == '__main__':

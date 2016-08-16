@@ -1,24 +1,18 @@
-# Copyright (c) 2003-2015 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2015 Pavel Roskin <proski@gnu.org>
+# Copyright (c) 2015 Rene Zhang <rz99@cornell.edu>
+# Copyright (c) 2015 Steven Myint <hg@stevenmyint.com>
+# Copyright (c) 2015-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Tests for pylint.checkers.exceptions."""
 
 import sys
 import unittest
 
-from astroid import test_utils
+import astroid
+
 from pylint.checkers import exceptions
 from pylint.testutils import CheckerTestCase, Message
 
@@ -36,7 +30,7 @@ class ExceptionsCheckerTest(CheckerTestCase):
     @unittest.skipUnless(sys.version_info[0] == 3,
                          "The test should emit an error on Python 3.")
     def test_raising_bad_type_python3(self):
-        node = test_utils.extract_node('raise (ZeroDivisionError, None)  #@')
+        node = astroid.extract_node('raise (ZeroDivisionError, None)  #@')
         message = Message('raising-bad-type', node=node, args='tuple')
         with self.assertAddsMessages(message):
             self.checker.visit_raise(node)
@@ -44,7 +38,7 @@ class ExceptionsCheckerTest(CheckerTestCase):
     @unittest.skipUnless(sys.version_info[0] == 2,
                          "The test is valid only on Python 2.")
     def test_raising_bad_type_python2(self):
-        nodes = test_utils.extract_node('''
+        nodes = astroid.extract_node('''
         raise (ZeroDivisionError, None)  #@
         from something import something
         raise (something, None) #@

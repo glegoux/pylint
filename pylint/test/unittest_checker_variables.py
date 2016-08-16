@@ -1,10 +1,14 @@
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Unit tests for the variables checker."""
 import sys
 import os
 import unittest
 
 import astroid
-from astroid import test_utils
 
 from pylint.checkers import variables
 from pylint.testutils import CheckerTestCase, linter, set_config, Message
@@ -32,11 +36,19 @@ class VariablesCheckerTC(CheckerTestCase):
         to be ignored.
         """
 
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         from argparse import THIS_does_not_EXIST
         """)
         with self.assertNoMessages():
             self.checker.visit_importfrom(node)
+
+    def test_all_elements_without_parent(self):
+        node = astroid.extract_node('__all__ = []')
+        node.value.elts.append(astroid.Const('test'))
+        root = node.root()
+        with self.assertNoMessages():
+            self.checker.visit_module(root)
+            self.checker.leave_module(root)
 
     @set_config(callbacks=('callback_', '_callback'))
     def test_custom_callback_string(self):
@@ -47,7 +59,7 @@ class VariablesCheckerTC(CheckerTestCase):
         self.checker._to_consume = []
         self.addCleanup(cleanup)
 
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         def callback_one(abc):
              ''' should not emit unused-argument. '''
         """)
@@ -55,7 +67,7 @@ class VariablesCheckerTC(CheckerTestCase):
             self.checker.visit_functiondef(node)
             self.checker.leave_functiondef(node)
 
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         def two_callback(abc, defg):
              ''' should not emit unused-argument. '''
         """)
@@ -63,7 +75,7 @@ class VariablesCheckerTC(CheckerTestCase):
             self.checker.visit_functiondef(node)
             self.checker.leave_functiondef(node)
 
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         def normal_func(abc):
              ''' should emit unused-argument. '''
         """)
@@ -72,7 +84,7 @@ class VariablesCheckerTC(CheckerTestCase):
             self.checker.visit_functiondef(node)
             self.checker.leave_functiondef(node)
 
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         def cb_func(abc):
              ''' Previous callbacks are overriden. '''
         """)
@@ -80,6 +92,40 @@ class VariablesCheckerTC(CheckerTestCase):
                 Message('unused-argument', node=node['abc'], args='abc')):
             self.checker.visit_functiondef(node)
             self.checker.leave_functiondef(node)
+
+    def test_redefined_builtin_ignored(self):
+        node = astroid.parse('''
+        from future.builtins import open
+        ''')
+        with self.assertNoMessages():
+            self.checker.visit_module(node)
+
+    @set_config(redefining_builtins_modules=('os',))
+    def test_redefined_builtin_custom_modules(self):
+        node = astroid.parse('''
+        from os import open
+        ''')
+        with self.assertNoMessages():
+            self.checker.visit_module(node)
+
+    @set_config(redefining_builtins_modules=('os',))
+    def test_redefined_builtin_modname_not_ignored(self):
+        node = astroid.parse('''
+        from future.builtins import open
+        ''')
+        with self.assertAddsMessages(
+                Message('redefined-builtin', node=node.body[0], args='open')):
+            self.checker.visit_module(node)
+
+    @set_config(redefining_builtins_modules=('os',))
+    def test_redefined_builtin_in_function(self):
+        node = astroid.extract_node('''
+        def test():
+            from os import open
+        ''')
+        with self.assertNoMessages():
+            self.checker.visit_module(node.root())
+            self.checker.visit_functiondef(node)
 
 
 class MissingSubmoduleTest(CheckerTestCase):

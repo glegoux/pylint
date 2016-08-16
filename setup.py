@@ -1,23 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # pylint: disable=W0404,W0622,W0704,W0613
-# copyright 2003-2013 LOGILAB S.A. (Paris, FRANCE), all rights reserved.
-# contact http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This file is part of pylint.
-#
-# pylint is free software: you can redistribute it and/or modify it under
-# the terms of the GNU Lesser General Public License as published by the Free
-# Software Foundation, either version 2.1 of the License, or (at your option) any
-# later version.
-#
-# pylint is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
-# details.
-#
-# You should have received a copy of the GNU Lesser General Public License along
-# with pylint.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright (c) 2006, 2009-2010, 2012-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2013 T.Rzepka <Tobias.Rzepka@gmail.com>
+# Copyright (c) 2014 Ricardo Gemignani <ricardo.gemignani@gmail.com>
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Generic Setup script, takes package info from __pkginfo__.py file.
 """
 from __future__ import absolute_import, print_function
@@ -57,6 +48,7 @@ include_dirs = __pkginfo__.get('include_dirs', [])
 ext_modules = __pkginfo__.get('ext_modules', None)
 install_requires = __pkginfo__.get('install_requires', None)
 dependency_links = __pkginfo__.get('dependency_links', [])
+extras_require = __pkginfo__.get('extras_require', {})
 
 readme_path = join(base_dir, 'README')
 if exists(readme_path):
@@ -149,7 +141,6 @@ def install(**kwargs):
             kwargs['dependency_links'] = dependency_links
         kwargs['entry_points'] = {'console_scripts': [
             'pylint = pylint:run_pylint',
-            'pylint-gui = pylint:run_pylint_gui',
             'epylint = pylint:run_epylint',
             'pyreverse = pylint:run_pyreverse',
             'symilar = pylint:run_symilar',
@@ -172,6 +163,7 @@ def install(**kwargs):
                  data_files=data_files,
                  ext_modules=ext_modules,
                  cmdclass=cmdclass,
+                 extras_require=extras_require,
                  **kwargs)
 
 if __name__ == '__main__':

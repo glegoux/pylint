@@ -9,6 +9,7 @@
 /pylint.egg-info/
 .tox
 *.sw[a-z]
+doc/extensions.rst
 doc/features.rst
 pyve
 build-stamp
@@ -17,3 +18,5 @@ debian/pylint.*.log
 debian/pylint.*.debhelper
 debian/pylint.substvars
 debian/pylint
+.coverage
+.coverage.*

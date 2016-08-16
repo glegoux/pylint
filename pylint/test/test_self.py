@@ -1,15 +1,9 @@
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
+# Copyright (c) 2006-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2014 Google, Inc.
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
 
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
 
 import contextlib
 import json
@@ -27,7 +21,6 @@ from pylint.lint import Run
 from pylint import __pkginfo__
 from pylint.reporters import BaseReporter
 from pylint.reporters.text import *
-from pylint.reporters.html import HTMLReporter
 from pylint.reporters.json import JSONReporter
 
 HERE = abspath(dirname(__file__))
@@ -116,7 +109,6 @@ class RunTC(unittest.TestCase):
         """Make pylint check itself."""
         reporters = [
             TextReporter(six.StringIO()),
-            HTMLReporter(six.StringIO()),
             ColorizedTextReporter(six.StringIO()),
             JSONReporter(six.StringIO())
         ]
@@ -154,31 +146,6 @@ class RunTC(unittest.TestCase):
         self._run_pylint(["--generate-rcfile"], out=out)
         output = out.getvalue()
         self.assertNotIn("profile", output)
-
-    def _test_deprecated_options(self, option, expected):
-        out = six.StringIO()
-        self._run_pylint([option, "--rcfile=", "pylint.config"], out=out)
-        output = out.getvalue()
-        if __pkginfo__.numversion >= (1, 6, 0):
-            self.assertIn("no such option", output)
-        else:
-            self.assertIn(expected, output)
-
-    def test_deprecated_options_zope(self):
-        expected = "no such option"
-        self._test_deprecated_options("--zope=y", expected)
-
-    def test_deprecated_options_symbols(self):
-        expected = "no such option"
-        self._test_deprecated_options("--symbols=y", expected)
-
-    def test_deprecated_options_include_ids(self):
-        expected = "no such option"
-        self._test_deprecated_options("--include-ids=y", expected)
-
-    def test_deprecated_options_profile(self):
-        expected = "no such option"
-        self._test_deprecated_options("--profile=y", expected)
 
     def test_help_message_option(self):
         self._runtest(['--help-msg', 'W0101'], code=0)
@@ -265,11 +232,6 @@ class RunTC(unittest.TestCase):
         self._test_output([module, "--disable=all", "--enable=all", "-rn"],
                           expected_output=expected)
 
-    def test_html_crash_report(self):
-        out = six.StringIO()
-        module = join(HERE, 'regrtest_data', 'html_crash_420.py')
-        self._runtest([module], code=16, reporter=HTMLReporter(out))
-
     def test_wrong_import_position_when_others_disabled(self):
         expected_output = textwrap.dedent('''
         No config file found, using default configuration
@@ -280,7 +242,7 @@ class RunTC(unittest.TestCase):
         module2 = join(HERE, 'regrtest_data', 'wrong_import_position.py')
         args = [module2, module1,
                 "--disable=all", "--enable=wrong-import-position",
-                "-rn"]
+                "-rn", "-sn"]
         out = six.StringIO()
         self._run_pylint(args, out=out)
         actual_output = out.getvalue()
@@ -342,6 +304,53 @@ class RunTC(unittest.TestCase):
             self.assertEqual(message[key], value)
         self.assertTrue(message['message'].startswith("No module named"))
 
+    def test_information_category_disabled_by_default(self):
+        expected = 'No config file found, using default configuration'
+        path = join(HERE, 'regrtest_data', 'meta.py')
+        self._test_output([path], expected_output=expected)
+
+    def test_error_mode_shows_no_score(self):
+        expected_output = textwrap.dedent('''
+        No config file found, using default configuration
+        ************* Module application_crash
+        E:  1, 6: Undefined variable 'something_undefined' (undefined-variable)
+        ''')
+        module = join(HERE, 'regrtest_data', 'application_crash.py')
+        self._test_output([module, "-E"], expected_output=expected_output)
+
+    def test_evaluation_score_shown_by_default(self):
+        expected_output = 'Your code has been rated at -60.00/10'
+        module = join(HERE, 'regrtest_data', 'application_crash.py')
+        self._test_output([module], expected_output=expected_output)
+
+    def test_confidence_levels(self):
+        expected = 'No config file found, using default configuration'
+        path = join(HERE, 'regrtest_data', 'meta.py')
+        self._test_output([path, "--confidence=HIGH,INFERENCE"],
+                          expected_output=expected)
+
+    def test_bom_marker(self):
+        path = join(HERE, 'regrtest_data', 'meta.py')
+        config_path = join(HERE, 'regrtest_data', '.pylintrc')
+        expected = 'Your code has been rated at 10.00/10'
+        self._test_output([path, "--rcfile=%s" % config_path, "-rn"],
+                          expected_output=expected)
+
+    def test_pylintrc_comments_in_values(self):
+        path = join(HERE, 'regrtest_data', 'test_pylintrc_comments.py')
+        config_path = join(HERE, 'regrtest_data', 'comments_pylintrc')
+        expected = textwrap.dedent('''
+        ************* Module test_pylintrc_comments
+        W:  2, 0: Bad indentation. Found 1 spaces, expected 4 (bad-indentation)
+        C:  1, 0: Missing module docstring (missing-docstring)
+        C:  1, 0: Missing function docstring (missing-docstring)
+        ''')
+        self._test_output([path, "--rcfile=%s" % config_path, "-rn"],
+                          expected_output=expected)
+
+    def test_no_crash_with_formatting_regex_defaults(self):
+        self._runtest(["--ignore-patterns=a"], reporter=TextReporter(six.StringIO()),
+                      code=32)
 
 
 if __name__ == '__main__':

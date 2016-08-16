@@ -1,4 +1,4 @@
-# pylint: disable=missing-docstring, multiple-statements, redefined-variable-type
+# pylint: disable=missing-docstring, multiple-statements
 # pylint: disable=too-few-public-methods, no-init, no-self-use, old-style-class,bare-except,broad-except
 from __future__ import print_function
 DEFINED = 1
@@ -158,12 +158,12 @@ except NameError:
     pass
 
 try:
-    unicode_2
+    unicode_2 # [undefined-variable]
 except Exception:
     pass
 
 try:
-    unicode_3
+    unicode_3 # [undefined-variable]
 except:
     pass
 

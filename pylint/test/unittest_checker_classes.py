@@ -1,9 +1,13 @@
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Unit tests for the variables checker."""
 import unittest
 import sys
 
 import astroid
-from astroid import test_utils
 from pylint.checkers import classes
 from pylint.testutils import CheckerTestCase, Message, set_config
 
@@ -13,7 +17,7 @@ class VariablesCheckerTC(CheckerTestCase):
 
     def test_bitbucket_issue_164(self):
         """Issue 164 report a false negative for access-member-before-definition"""
-        n1, n2 = test_utils.extract_node("""
+        n1, n2 = astroid.extract_node("""
         class MyClass1(object):
           def __init__(self):
             self.first += 5 #@
@@ -54,7 +58,7 @@ class VariablesCheckerTC(CheckerTestCase):
         # This used to raise a non-parent-init-called on Pylint 1.3
         # See issue https://bitbucket.org/logilab/pylint/issue/308/
         # for reference.
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         from tracemalloc import Sequence
         class _Traces(Sequence):
             def __init__(self, traces): #@
@@ -69,7 +73,7 @@ class VariablesCheckerTC(CheckerTestCase):
         # ``next(node.infer())`` was used in that checker's
         # logic and the first inferred node was an YES object,
         # leading to this false positive.
-        node = test_utils.extract_node("""
+        node = astroid.extract_node("""
         import ctypes
 
         class Foo(ctypes.BigEndianStructure):

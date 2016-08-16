@@ -1,4 +1,4 @@
-#pylint: disable=W0401,W0611,no-absolute-import,invalid-name,import-error,bare-except,broad-except,wrong-import-order,ungrouped-imports
+#pylint: disable=W0401,W0611,no-absolute-import,invalid-name,import-error,bare-except,broad-except,wrong-import-order,ungrouped-imports,wrong-import-position
 """check unexistant names imported are reported"""
 from __future__ import print_function
 
@@ -46,18 +46,18 @@ except ValueError:
     pass
 
 try:
-    import collections.dont_emit
+    import collections.emit # [no-name-in-module]
 except Exception:
     pass
 
 try:
-    import collections.please_dont_emit
+    import collections.emit1 # [no-name-in-module]
 except:
     pass
 
 try:
     if something:
-        import collections.please_dont_emit
+        import collections.emit2 # [no-name-in-module]
 except Exception:
     pass
 

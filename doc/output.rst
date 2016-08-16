@@ -3,8 +3,8 @@ Pylint output
 -------------
 
 The default format for the output is raw text. You can change this by passing
-pylint the ``--output-format=<value>`` option. Possible values are: parseable,
-colorized, msvs (visual studio) and html.
+pylint the ``--output-format=<value>`` option. Possible values are: json,
+parseable, colorized and msvs (visual studio).
 
 Moreover you can customize the exact way information are displayed using the
 `--msg-template=<format string>` option. The `format string` uses the
@@ -50,10 +50,6 @@ A few other examples:
 * Parseable (Emacs and all, former 'parseable' output format) format::
 
     {path}:{line}: [{msg_id}({symbol}), {obj}] {msg}
-
-* HTML output (Default for the html output format) format::
-
-    '{category}{module}{obj}{line}{column}{msg}'
 
 
 .. _Python new format syntax: http://docs.python.org/2/library/string.html#formatstrings
@@ -102,9 +98,11 @@ Example (extracted from a run of Pylint on itself...):
 Reports section
 '''''''''''''''
 
-Following the analysis message, Pylint will display a set of reports,
+Following the analysis message, Pylint can display a set of reports,
 each one focusing on a particular aspect of the project, such as number
-of messages by categories, modules dependencies...
+of messages by categories, modules dependencies. These features can
+be enabled through the ``--report=y`` option, or its shorthand
+version ``-rn``.
 
 For instance, the metrics report displays summaries gathered from the
 current run.

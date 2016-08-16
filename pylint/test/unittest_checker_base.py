@@ -1,10 +1,18 @@
+# Copyright (c) 2013-2015 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2013-2014 Google, Inc.
+# Copyright (c) 2015 Dmitry Pribysh <dmand@yandex.ru>
+# Copyright (c) 2015-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2016 Yannack <yannack@users.noreply.github.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Unittest for the base checker."""
 
 import re
 import unittest
 
 import astroid
-from astroid import test_utils
 from pylint.checkers import base
 from pylint.testutils import CheckerTestCase, Message, set_config
 
@@ -30,7 +38,7 @@ class DocstringTest(CheckerTestCase):
             self.checker.visit_module(module)
 
     def test_empty_docstring_function(self):
-        func = test_utils.extract_node("""
+        func = astroid.extract_node("""
         def func(tion):
            pass""")
         message = Message('missing-docstring', node=func, args=('function',))
@@ -39,7 +47,7 @@ class DocstringTest(CheckerTestCase):
 
     @set_config(docstring_min_length=2)
     def test_short_function_no_docstring(self):
-        func = test_utils.extract_node("""
+        func = astroid.extract_node("""
         def func(tion):
            pass""")
         with self.assertNoMessages():
@@ -47,14 +55,14 @@ class DocstringTest(CheckerTestCase):
 
     @set_config(docstring_min_length=2)
     def test_function_no_docstring_by_name(self):
-        func = test_utils.extract_node("""
+        func = astroid.extract_node("""
         def __fun__(tion):
            pass""")
         with self.assertNoMessages():
             self.checker.visit_functiondef(func)
 
     def test_class_no_docstring(self):
-        klass = test_utils.extract_node("""
+        klass = astroid.extract_node("""
         class Klass(object):
            pass""")
         message = Message('missing-docstring', node=klass, args=('class',))
@@ -70,7 +78,7 @@ class NameCheckerTest(CheckerTestCase):
 
     @set_config(include_naming_hint=True)
     def test_naming_hint(self):
-        const = test_utils.extract_node("""
+        const = astroid.extract_node("""
         const = "CONSTANT" #@
         """)
         message = Message(
@@ -82,7 +90,7 @@ class NameCheckerTest(CheckerTestCase):
 
     @set_config(include_naming_hint=True, const_name_hint='CONSTANT')
     def test_naming_hint_configured_hint(self):
-        const = test_utils.extract_node("""
+        const = astroid.extract_node("""
         const = "CONSTANT" #@
         """)
         with self.assertAddsMessages(
@@ -90,13 +98,17 @@ class NameCheckerTest(CheckerTestCase):
                     args=('constant', 'const', ' (hint: CONSTANT)'))):
             self.checker.visit_assignname(const.targets[0])
 
-    @set_config(attr_rgx=re.compile('[A-Z]+'))
+    @set_config(attr_rgx=re.compile('[A-Z]+'),
+                property_classes=('abc.abstractproperty', '.custom_prop'))
     def test_property_names(self):
         # If a method is annotated with @property, it's name should
         # match the attr regex. Since by default the attribute regex is the same
         # as the method regex, we override it here.
-        methods = test_utils.extract_node("""
+        methods = astroid.extract_node("""
         import abc
+
+        def custom_prop(f):
+          return property(f)
 
         class FooClass(object):
           @property
@@ -110,17 +122,22 @@ class NameCheckerTest(CheckerTestCase):
           @abc.abstractproperty
           def BAZ(self): #@
             pass
+
+          @custom_prop
+          def QUX(self): #@
+            pass
         """)
         with self.assertNoMessages():
             self.checker.visit_functiondef(methods[0])
             self.checker.visit_functiondef(methods[2])
+            self.checker.visit_functiondef(methods[3])
         with self.assertAddsMessages(Message('invalid-name', node=methods[1],
                                              args=('attribute', 'bar', ''))):
             self.checker.visit_functiondef(methods[1])
 
     @set_config(attr_rgx=re.compile('[A-Z]+'))
     def test_property_setters(self):
-        method = test_utils.extract_node("""
+        method = astroid.extract_node("""
         class FooClass(object):
           @property
           def foo(self): pass
@@ -133,14 +150,14 @@ class NameCheckerTest(CheckerTestCase):
             self.checker.visit_functiondef(method)
 
     def test_module_level_names(self):
-        assign = test_utils.extract_node("""
+        assign = astroid.extract_node("""
         import collections
         Class = collections.namedtuple("a", ("b", "c")) #@
         """)
         with self.assertNoMessages():
             self.checker.visit_assignname(assign.targets[0])
 
-        assign = test_utils.extract_node("""
+        assign = astroid.extract_node("""
         class ClassA(object):
             pass
         ClassB = ClassA
@@ -157,7 +174,7 @@ class NameCheckerTest(CheckerTestCase):
             self.checker.visit_assignname(module.body[1].targets[0].elts[0])
             self.checker.visit_assignname(module.body[2].targets[0])
 
-        assign = test_utils.extract_node("""
+        assign = astroid.extract_node("""
         CONST = "12 34 ".rstrip().split()""")
         with self.assertNoMessages():
             self.checker.visit_assignname(assign.targets[0])
@@ -170,7 +187,7 @@ class MultiNamingStyleTest(CheckerTestCase):
 
     @set_config(class_rgx=MULTI_STYLE_RE)
     def test_multi_name_detection_majority(self):
-        classes = test_utils.extract_node("""
+        classes = astroid.extract_node("""
         class classb(object): #@
             pass
         class CLASSA(object): #@
@@ -188,7 +205,7 @@ class MultiNamingStyleTest(CheckerTestCase):
 
     @set_config(class_rgx=MULTI_STYLE_RE)
     def test_multi_name_detection_first_invalid(self):
-        classes = test_utils.extract_node("""
+        classes = astroid.extract_node("""
         class class_a(object): #@
             pass
         class classb(object): #@
@@ -211,7 +228,7 @@ class MultiNamingStyleTest(CheckerTestCase):
                 function_rgx=MULTI_STYLE_RE,
                 name_group=('function:method',))
     def test_multi_name_detection_group(self):
-        function_defs = test_utils.extract_node("""
+        function_defs = astroid.extract_node("""
         class First(object):
             def func(self): #@
                 pass
@@ -228,7 +245,7 @@ class MultiNamingStyleTest(CheckerTestCase):
 
     @set_config(function_rgx=re.compile('(?:(?P<ignore>FOO)|(?P<UP>[A-Z]+)|(?P<down>[a-z]+))$'))
     def test_multi_name_detection_exempt(self):
-        function_defs = test_utils.extract_node("""
+        function_defs = astroid.extract_node("""
         def FOO(): #@
             pass
         def lower(): #@
@@ -249,28 +266,28 @@ class ComparisonTest(CheckerTestCase):
     CHECKER_CLASS = base.ComparisonChecker
 
     def test_comparison(self):
-        node = test_utils.extract_node("foo == True")
+        node = astroid.extract_node("foo == True")
         message = Message('singleton-comparison',
                           node=node,
                           args=(True, "just 'expr' or 'expr is True'"))
         with self.assertAddsMessages(message):
             self.checker.visit_compare(node)
 
-        node = test_utils.extract_node("foo == False")
+        node = astroid.extract_node("foo == False")
         message = Message('singleton-comparison',
                           node=node,
                           args=(False, "'not expr' or 'expr is False'"))
         with self.assertAddsMessages(message):
             self.checker.visit_compare(node)
 
-        node = test_utils.extract_node("foo == None")
+        node = astroid.extract_node("foo == None")
         message = Message('singleton-comparison',
                           node=node,
                           args=(None, "'expr is None'"))
         with self.assertAddsMessages(message):
             self.checker.visit_compare(node)
 
-        node = test_utils.extract_node("True == foo")
+        node = astroid.extract_node("True == foo")
         messages = (Message('misplaced-comparison-constant',
                             node=node,
                             args=('foo == True',)),
@@ -280,7 +297,7 @@ class ComparisonTest(CheckerTestCase):
         with self.assertAddsMessages(*messages):
             self.checker.visit_compare(node)
 
-        node = test_utils.extract_node("False == foo")
+        node = astroid.extract_node("False == foo")
         messages = (Message('misplaced-comparison-constant',
                             node=node,
                             args=('foo == False',)),
@@ -290,7 +307,7 @@ class ComparisonTest(CheckerTestCase):
         with self.assertAddsMessages(*messages):
             self.checker.visit_compare(node)
 
-        node = test_utils.extract_node("None == foo")
+        node = astroid.extract_node("None == foo")
         messages = (Message('misplaced-comparison-constant',
                             node=node,
                             args=('foo == None',)),

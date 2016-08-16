@@ -1,10 +1,15 @@
-# Copyright 2014 Google Inc. All Rights Reserved.
+# Copyright (c) 2014 Google, Inc.
+# Copyright (c) 2015-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Unittest for the logging checker."""
 import unittest
-from astroid import test_utils
+
+import astroid
 
 from pylint.checkers import logging
-
 from pylint.testutils import CheckerTestCase, Message, set_config
 
 
@@ -12,7 +17,7 @@ class LoggingModuleDetectionTest(CheckerTestCase):
     CHECKER_CLASS = logging.LoggingChecker
     
     def test_detects_standard_logging_module(self):
-        stmts = test_utils.extract_node("""
+        stmts = astroid.extract_node("""
         import logging #@
         logging.warn('%s' % '%s')  #@
         """)
@@ -22,7 +27,7 @@ class LoggingModuleDetectionTest(CheckerTestCase):
             self.checker.visit_call(stmts[1])
 
     def test_detects_renamed_standard_logging_module(self):
-        stmts = test_utils.extract_node("""
+        stmts = astroid.extract_node("""
         import logging as blogging #@
         blogging.warn('%s' % '%s')  #@
         """)
@@ -33,7 +38,7 @@ class LoggingModuleDetectionTest(CheckerTestCase):
 
     @set_config(logging_modules=['logging', 'my.logging'])
     def test_nonstandard_logging_module(self):
-        stmts = test_utils.extract_node("""
+        stmts = astroid.extract_node("""
         from my import logging as blogging #@
         blogging.warn('%s' % '%s')  #@
         """)

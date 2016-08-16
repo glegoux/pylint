@@ -1,34 +1,26 @@
-# Copyright (c) 2005-2014 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2006-2011, 2013-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2015-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """non regression tests for pylint, which requires a too specific configuration
 to be incorporated in the automatic functional test framework
 """
 
 import sys
-import platform
 import os
 from os.path import abspath, dirname, join
 import unittest
 
+import astroid
 from pylint.testutils import TestReporter
-from pylint.lint import PyLinter
 from pylint import checkers
+from pylint import epylint
+from pylint import lint
 
 test_reporter = TestReporter()
-linter = PyLinter()
+linter = lint.PyLinter()
 linter.set_reporter(test_reporter)
 linter.disable('I')
 linter.config.persistent = 0
@@ -36,6 +28,11 @@ checkers.initialize(linter)
 
 REGR_DATA = join(dirname(abspath(__file__)), 'regrtest_data')
 sys.path.insert(1, REGR_DATA)
+
+try:
+    PYPY_VERSION_INFO = sys.pypy_version_info
+except AttributeError:
+    PYPY_VERSION_INFO = None
 
 class NonRegrTC(unittest.TestCase):
     def setUp(self):
@@ -55,43 +52,22 @@ class NonRegrTC(unittest.TestCase):
         self.assertEqual(got, '')
 
     def test_check_package___init__(self):
-        for variation in ('package.__init__', join(REGR_DATA, 'package', '__init__.py')):
-            linter.check(variation)
-            got = linter.reporter.finalize().strip()
-            checked = list(linter.stats['by_module'].keys())
-            self.assertEqual(checked, ['package.__init__'],
-                             '%s: %s' % (variation, checked))
+        filename = 'package.__init__'
+        linter.check(filename)
+        checked = list(linter.stats['by_module'].keys())
+        self.assertEqual(checked, ['package.__init__'],
+                         '%s: %s' % (filename, checked))
+
         cwd = os.getcwd()
         os.chdir(join(REGR_DATA, 'package'))
         sys.path.insert(0, '')
         try:
-            for variation in ('__init__', '__init__.py'):
-                linter.check(variation)
-                got = linter.reporter.finalize().strip()
-                checked = list(linter.stats['by_module'].keys())
-                self.assertEqual(checked, ['__init__'],
-                                 '%s: %s' % (variation, checked))
+            linter.check('__init__')
+            checked = list(linter.stats['by_module'].keys())
+            self.assertEqual(checked, ['__init__'], checked)
         finally:
             sys.path.pop(0)
             os.chdir(cwd)
-
-    def test_numarray_inference(self):
-        try:
-            from numarray import random_array
-        except ImportError:
-            self.skipTest('test skipped: numarray.random_array is not available')
-        linter.check(join(REGR_DATA, 'numarray_inf.py'))
-        got = linter.reporter.finalize().strip()
-        self.assertEqual(got, "E:  5: Instance of 'int' has no 'astype' member (but some types could not be inferred)")
-
-    def test_numarray_import(self):
-        try:
-            import numarray
-        except ImportError:
-            self.skipTest('test skipped: numarray is not available')
-        linter.check(join(REGR_DATA, 'numarray_import.py'))
-        got = linter.reporter.finalize().strip()
-        self.assertEqual(got, '')
 
     def test_class__doc__usage(self):
         linter.check(join(REGR_DATA, 'classdoc_usage.py'))
@@ -143,6 +119,32 @@ class NonRegrTC(unittest.TestCase):
         linter.check(join(REGR_DATA, 'bad_package'))
         got = linter.reporter.finalize().strip()
         self.assertIn(expected, got)
+
+    @unittest.skipIf(PYPY_VERSION_INFO and PYPY_VERSION_INFO < (4, 0),
+                     "On older PyPy versions, sys.executable was set to a value "
+                     "that is not supported by the implementation of this function. "
+                     "( https://bitbucket.org/pypy/pypy/commits/19e305e27e67 )")
+    def test_epylint_does_not_block_on_huge_files(self):
+        path = join(REGR_DATA, 'huge.py')
+        out, err = epylint.py_run(path, return_std=True)
+        self.assertTrue(hasattr(out, 'read'))
+        self.assertTrue(hasattr(err, 'read'))
+        output = out.read(10)
+        self.assertIsInstance(output, str)
+
+    def test_pylint_config_attr(self):
+        mod = astroid.MANAGER.ast_from_module_name('pylint.lint')
+        pylinter = mod['PyLinter']
+        expect = ['OptionsManagerMixIn', 'object', 'MessagesHandlerMixIn',
+                  'ReportsHandlerMixIn', 'BaseTokenChecker', 'BaseChecker',
+                  'OptionsProviderMixIn']
+        self.assertListEqual([c.name for c in pylinter.ancestors()],
+                             expect)
+        self.assertTrue(list(astroid.Instance(pylinter).getattr('config')))
+        inferred = list(astroid.Instance(pylinter).igetattr('config'))
+        self.assertEqual(len(inferred), 1)
+        self.assertEqual(inferred[0].root().name, 'optparse')
+        self.assertEqual(inferred[0].name, 'Values')
 
 
 if __name__ == '__main__':

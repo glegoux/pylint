@@ -1,5 +1,5 @@
 """ Test that import errors are detected. """
-# pylint: disable=invalid-name, unused-import, no-absolute-import, bare-except, broad-except
+# pylint: disable=invalid-name, unused-import, no-absolute-import, bare-except, broad-except, wrong-import-order, wrong-import-position
 import totally_missing # [import-error]
 
 try:
@@ -17,15 +17,6 @@ try:
 except ValueError:
     maybe_missing_2 = None
 
-try:
-    import dont_emit
-except Exception:
-    pass
-
-try:
-    import please_dont_emit
-except:
-    pass
 
 try:
     if maybe_missing:

@@ -1,18 +1,18 @@
-# Copyright (c) 2006-2013 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# -*- coding: utf-8 -*-
+# Copyright (c) 2006-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2013-2014, 2016 Google, Inc.
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2014 Holger Peters <email@holger-peters.de>
+# Copyright (c) 2014 David Shea <dshea@redhat.com>
+# Copyright (c) 2015 Radu Ciorba <radu@devrandom.ro>
+# Copyright (c) 2015 Rene Zhang <rz99@cornell.edu>
+# Copyright (c) 2015 Dmitry Pribysh <dmand@yandex.ru>
+# Copyright (c) 2016 Jakub Wilk <jwilk@jwilk.net>
+# Copyright (c) 2016 Jürgen Hermann <jh@web.de>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """try to find more bugs in the code using astroid inference capabilities
 """
 
@@ -42,7 +42,8 @@ from pylint.checkers.utils import (
     supports_setitem,
     supports_delitem,
     safe_infer,
-    has_known_bases)
+    has_known_bases,
+    is_builtin_object)
 
 
 BUILTINS = six.moves.builtins.__name__
@@ -53,8 +54,8 @@ def _unflatten(iterable):
     for index, elem in enumerate(iterable):
         if (isinstance(elem, collections.Sequence) and
                 not isinstance(elem, six.string_types)):
-            for elem in _unflatten(elem):
-                yield elem
+            for single_elem in _unflatten(elem):
+                yield single_elem
         elif elem and not index:
             # We're interested only in the first element.
             yield elem
@@ -142,7 +143,7 @@ MSGS = {
               'the context manager protocol(__enter__/__exit__).'),
     'E1130': ('%s',
               'invalid-unary-operand-type',
-              'Emitted when an unary operand is used on an object which does not '
+              'Emitted when a unary operand is used on an object which does not '
               'support this type of operation'),
     'E1131': ('%s',
               'unsupported-binary-operation',
@@ -153,7 +154,7 @@ MSGS = {
               'Emitted when a function call got multiple values for a keyword.'),
     'E1135': ("Value '%s' doesn't support membership test",
               'unsupported-membership-test',
-              'Emitted when an instance in membership test expression doesn\'t'
+              'Emitted when an instance in membership test expression doesn\'t '
               'implement membership protocol (__contains__/__iter__/__getitem__)'),
     'E1136': ("Value '%s' is unsubscriptable",
               'unsubscriptable-object',
@@ -167,6 +168,11 @@ MSGS = {
               'unsupported-delete-operation',
               "Emitted when an object does not support item deletion "
               "(i.e. doesn't define __delitem__ method)"),
+    'E1139': ('Invalid metaclass %r used',
+              'invalid-metaclass',
+              'Emitted whenever we can detect that a class is using, '
+              'as a metaclass, something which might be invalid for using as '
+              'a metaclass.'),
     }
 
 # builtin sequence types in Python 2 and 3.
@@ -258,6 +264,134 @@ def _determine_callable(callable_obj):
     else:
         raise ValueError
 
+
+def _has_parent_of_type(node, node_type, statement):
+    """Check if the given node has a parent of the given type."""
+    parent = node.parent
+    while not isinstance(parent, node_type) and statement.parent_of(parent):
+        parent = parent.parent
+    return isinstance(parent, node_type)
+
+
+def _is_name_used_as_variadic(name, variadics):
+    """Check if the given name is used as a variadic argument."""
+    return any(variadic.value == name or variadic.value.parent_of(name)
+               for variadic in variadics)
+
+
+def _no_context_variadic_keywords(node):
+    statement = node.statement()
+    scope = node.scope()
+    variadics = ()
+
+    if not isinstance(scope, astroid.FunctionDef):
+        return False
+
+    if isinstance(statement, astroid.Expr) and isinstance(statement.value, astroid.Call):
+        call = statement.value
+        variadics = call.keywords or ()
+
+    return _no_context_variadic(node, scope.args.kwarg, astroid.Keyword, variadics)
+
+
+def _no_context_variadic_positional(node):
+    statement = node.statement()
+    scope = node.scope()
+    variadics = ()
+
+    if not isinstance(scope, astroid.FunctionDef):
+        return False
+
+    if isinstance(statement, astroid.Expr) and isinstance(statement.value, astroid.Call):
+        call = statement.value
+        variadics = call.starargs
+
+    return _no_context_variadic(node, scope.args.vararg, astroid.Starred, variadics)
+
+
+def _no_context_variadic(node, variadic_name, variadic_type, variadics):
+    """Verify if the given call node has variadic nodes without context
+
+    This is a workaround for handling cases of nested call functions
+    which don't have the specific call context at hand.
+    Variadic arguments (variable positional arguments and variable
+    keyword arguments) are inferred, inherently wrong, by astroid
+    as a Tuple, respectively a Dict with empty elements.
+    This can lead pylint to believe that a function call receives
+    too few arguments.
+    """
+    statement = node.statement()
+    for name in statement.nodes_of_class(astroid.Name):
+        if name.name != variadic_name:
+            continue
+
+        inferred = safe_infer(name)
+        if isinstance(inferred, (astroid.List, astroid.Tuple)):
+            length = len(inferred.elts)
+        elif isinstance(inferred, astroid.Dict):
+            length = len(inferred.items)
+        else:
+            continue
+
+        inferred_statement = inferred.statement()
+        if not length and isinstance(inferred_statement, astroid.FunctionDef):
+            is_in_starred_context = _has_parent_of_type(node, variadic_type, statement)
+            used_as_starred_argument = _is_name_used_as_variadic(name, variadics)
+            if is_in_starred_context or used_as_starred_argument:
+                return True
+    return False
+
+
+def _is_invalid_metaclass(metaclass):
+    try:
+        mro = metaclass.mro()
+    except NotImplementedError:
+        # Cannot have a metaclass which is not a newstyle class.
+        return True
+    else:
+        if not any(is_builtin_object(cls) and cls.name == 'type'
+                   for cls in mro):
+            return True
+    return False
+
+
+def _infer_from_metaclass_constructor(cls, func):
+    """Try to infer what the given *func* constructor is building
+
+    :param astroid.FunctionDef func:
+        A metaclass constructor. Metaclass definitions can be
+        functions, which should accept three arguments, the name of
+        the class, the bases of the class and the attributes.
+        The function could return anything, but usually it should
+        be a proper metaclass.
+    :param astroid.ClassDef cls:
+        The class for which the *func* parameter should generate
+        a metaclass.
+    :returns:
+        The class generated by the function or None,
+        if we couldn't infer it.
+    :rtype: astroid.ClassDef
+    """
+    context = astroid.context.InferenceContext()
+
+    class_bases = astroid.List()
+    class_bases.postinit(elts=cls.bases)
+
+    attrs = astroid.Dict()
+    local_names = [(name, values[-1]) for name, values in cls.locals.items()]
+    attrs.postinit(local_names)
+
+    builder_args = astroid.Tuple()
+    builder_args.postinit([cls.name, class_bases, attrs])
+
+    context.callcontext = astroid.context.CallContext(builder_args)
+    try:
+        inferred = next(func.infer_call_result(func, context), None)
+    except astroid.InferenceError:
+        return None
+    return inferred or None
+
+
 class TypeChecker(BaseChecker):
     """try to find bugs in the code using type inference
     """
@@ -287,14 +421,17 @@ class should be ignored. A mixin class is detected if its name ends with \
                          'deduced by static analysis. It supports qualified '
                          'module names, as well as Unix pattern matching.'}
                ),
+               # the defaults here are *stdlib* names that (almost) always
+               # lead to false positives, since their idiomatic use is
+               # 'too dynamic' for pylint to grok.
                ('ignored-classes',
-                {'default' : (),
+                {'default' : ('optparse.Values', 'thread._local', '_thread._local'),
                  'type' : 'csv',
                  'metavar' : '<members names>',
-                 'help' : 'List of classes names for which member attributes '
+                 'help' : 'List of class names for which member attributes '
                           'should not be checked (useful for classes with '
-                          'attributes dynamically set). This supports '
-                          'can work with qualified names.'}
+                          'dynamically set attributes). This supports '
+                          'the use of qualified names.'}
                ),
 
                ('generated-members',
@@ -305,6 +442,15 @@ class should be ignored. A mixin class is detected if its name ends with \
 missed by pylint inference system, and so shouldn\'t trigger E1101 when \
 accessed. Python regular expressions are accepted.'}
                ),
+               ('contextmanager-decorators',
+                {'default': ['contextlib.contextmanager'],
+                 'type': 'csv',
+                 'metavar': '<decorator names>',
+                 'help': 'List of decorators that produce context managers, '
+                         'such as contextlib.contextmanager. Add to this list '
+                         'to register other decorators that produce valid '
+                         'context managers.'}
+               ),
               )
 
     def open(self):
@@ -313,11 +459,38 @@ accessed. Python regular expressions are accepted.'}
         # (surrounded by quote `"` and followed by a comma `,`)
         # REQUEST,aq_parent,"[a-zA-Z]+_set{1,2}"' =>
         # ('REQUEST', 'aq_parent', '[a-zA-Z]+_set{1,2}')
-        if isinstance(self.config.generated_members, str):
+        if isinstance(self.config.generated_members, six.string_types):
             gen = shlex.shlex(self.config.generated_members)
             gen.whitespace += ','
-            gen.wordchars += '[]-+'
+            gen.wordchars += '[]-+\.*?'
             self.config.generated_members = tuple(tok.strip('"') for tok in gen)
+
+    @check_messages('invalid-metaclass')
+    def visit_classdef(self, node):
+
+        def _metaclass_name(metaclass):
+            if isinstance(metaclass, (astroid.ClassDef, astroid.FunctionDef)):
+                return metaclass.name
+            return metaclass.as_string()
+
+        metaclass = node.declared_metaclass()
+        if not metaclass:
+            return
+
+        if isinstance(metaclass, astroid.FunctionDef):
+            # Try to infer the result.
+            metaclass = _infer_from_metaclass_constructor(node, metaclass)
+            if not metaclass:
+                # Don't do anything if we cannot infer the result.
+                return
+
+        if isinstance(metaclass, astroid.ClassDef):
+            if _is_invalid_metaclass(metaclass):
+                self.add_message('invalid-metaclass', node=node,
+                                 args=(_metaclass_name(metaclass), ))
+        else:
+            self.add_message('invalid-metaclass', node=node,
+                             args=(_metaclass_name(metaclass), ))
 
     def visit_assignattr(self, node):
         if isinstance(node.assign_type(), astroid.AugAssign):
@@ -338,6 +511,8 @@ accessed. Python regular expressions are accepted.'}
         for pattern in self.config.generated_members:
             # attribute is marked as generated, stop here
             if re.match(pattern, node.attrname):
+                return
+            if re.match(pattern, node.as_string()):
                 return
 
         try:
@@ -471,33 +646,6 @@ accessed. Python regular expressions are accepted.'}
                                      args=node.func.as_string())
                     break
 
-    @staticmethod
-    def _no_context_variadic(node):
-        """Verify if the given call node has variadic nodes without context
-
-        This is a workaround for handling cases of nested call functions
-        which don't have the specific call context at hand.
-        Variadic arguments (variable positional arguments and variable
-        keyword arguments) are inferred, inherently wrong, by astroid
-        as a Tuple, respectively a Dict with empty elements.
-        This can lead pylint to believe that a function call receives
-        too few arguments.
-        """
-        for arg in node.args:
-            if not isinstance(arg, astroid.Starred):
-                continue
-
-            inferred = safe_infer(arg.value)
-            if isinstance(inferred, astroid.Tuple):
-                length = len(inferred.elts)
-            elif isinstance(inferred, astroid.Dict):
-                length = len(inferred.items)
-            else:
-                return False
-            if not length and isinstance(inferred.statement(), astroid.FunctionDef):
-                return True
-        return False
-
     @check_messages(*(list(MSGS.keys())))
     def visit_call(self, node):
         """check that called functions/methods are inferred to callable objects,
@@ -509,11 +657,17 @@ accessed. Python regular expressions are accepted.'}
         call_site = astroid.arguments.CallSite.from_call(node)
         num_positional_args = len(call_site.positional_arguments)
         keyword_args = list(call_site.keyword_arguments.keys())
-        no_context_variadic = self._no_context_variadic(node)
+
+        # Determine if we don't have a context for our call and we use variadics.
+        if isinstance(node.scope(), astroid.FunctionDef):
+            has_no_context_positional_variadic = _no_context_variadic_positional(node)
+            has_no_context_keywords_variadic = _no_context_variadic_keywords(node)
+        else:
+            has_no_context_positional_variadic = has_no_context_keywords_variadic = False
 
         called = safe_infer(node.func)
         # only function, generator and object defining __call__ are allowed
-        if called is not None and not called.callable():
+        if called and not called.callable():
             self.add_message('not-callable', node=node,
                              args=node.func.as_string())
 
@@ -643,13 +797,13 @@ accessed. Python regular expressions are accepted.'}
                 else:
                     display_name = repr(name)
                 # TODO(cpopa): this should be removed after PyCQA/astroid/issues/177
-                if not no_context_variadic:
+                if not has_no_context_positional_variadic:
                     self.add_message('no-value-for-parameter', node=node,
                                      args=(display_name, callable_name))
 
         for name in kwparams:
             defval, assigned = kwparams[name]
-            if defval is None and not assigned:
+            if defval is None and not assigned and not has_no_context_keywords_variadic:
                 self.add_message('missing-kwoa', node=node,
                                  args=(name, callable_name))
 
@@ -668,6 +822,8 @@ accessed. Python regular expressions are accepted.'}
         # slice or instances with __index__.
         parent_type = safe_infer(node.parent.value)
         if not isinstance(parent_type, (astroid.ClassDef, astroid.Instance)):
+            return
+        if not has_known_bases(parent_type):
             return
 
         # Determine what method on the parent this index will use
@@ -773,7 +929,8 @@ accessed. Python regular expressions are accepted.'}
             if isinstance(infered, bases.Generator):
                 # Check if we are dealing with a function decorated
                 # with contextlib.contextmanager.
-                if decorated_with(infered.parent, ['contextlib.contextmanager']):
+                if decorated_with(infered.parent,
+                                  self.config.contextmanager_decorators):
                     continue
                 # If the parent of the generator is not the context manager itself,
                 # that means that it could have been returned from another
@@ -789,7 +946,8 @@ accessed. Python regular expressions are accepted.'}
                     scope = path.scope()
                     if not isinstance(scope, astroid.FunctionDef):
                         continue
-                    if decorated_with(scope, ['contextlib.contextmanager']):
+                    if decorated_with(scope,
+                                      self.config.contextmanager_decorators):
                         break
                 else:
                     self.add_message('not-context-manager',
@@ -834,6 +992,9 @@ accessed. Python regular expressions are accepted.'}
     def _check_binop_errors(self, node):
         for error in node.type_errors():
             # Let the error customize its output.
+            if any(isinstance(obj, astroid.ClassDef) and not has_known_bases(obj)
+                   for obj in (error.left_type, error.right_type)):
+                continue
             self.add_message('unsupported-binary-operation',
                              args=str(error), node=node)
 
@@ -908,11 +1069,11 @@ class IterableChecker(BaseChecker):
 
     msgs = {'E1133': ('Non-iterable value %s is used in an iterating context',
                       'not-an-iterable',
-                      'Used when a non-iterable value is used in place where'
+                      'Used when a non-iterable value is used in place where '
                       'iterable is expected'),
             'E1134': ('Non-mapping value %s is used in a mapping context',
                       'not-a-mapping',
-                      'Used when a non-mapping value is used in place where'
+                      'Used when a non-mapping value is used in place where '
                       'mapping is expected'),
            }
 

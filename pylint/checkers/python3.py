@@ -1,16 +1,9 @@
-# Copyright 2014 Google Inc.
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2014-2015 Brett Cannon <brett@python.org>
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2015 Pavel Roskin <proski@gnu.org>
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Check Python 2 code for Python 2/3 source-compatible issues."""
 from __future__ import absolute_import, print_function
 
@@ -409,7 +402,6 @@ class Python3Checker(checkers.BaseChecker):
     def visit_print(self, node):
         self.add_message('print-statement', node=node)
 
-    @utils.check_messages('no-absolute-import', 'import-star-module-level')
     def visit_importfrom(self, node):
         if node.modname == '__future__':
             for name, _ in node.names:
@@ -418,10 +410,12 @@ class Python3Checker(checkers.BaseChecker):
                 elif name == 'absolute_import':
                     self._future_absolute_import = True
         elif not self._future_absolute_import:
-            self.add_message('no-absolute-import', node=node)
+            if self.linter.is_message_enabled('no-absolute-import'):
+                self.add_message('no-absolute-import', node=node)
         if node.names[0][0] == '*':
-            if not isinstance(node.scope(), astroid.Module):
-                self.add_message('import-star-module-level', node=node)
+            if self.linter.is_message_enabled('import-star-module-level'):
+                if not isinstance(node.scope(), astroid.Module):
+                    self.add_message('import-star-module-level', node=node)
 
     @utils.check_messages('no-absolute-import')
     def visit_import(self, node):
@@ -567,7 +561,7 @@ class Python3TokenChecker(checkers.BaseTokenChecker):
                    'old_names': [('W0331', 'old-ne-operator')]}),
         'E1608': ('Use of old octal literal',
                   'old-octal-literal',
-                  'Usen when encountering the old octal syntax, '
+                  'Used when encountering the old octal syntax, '
                   'removed in Python 3. To use the new syntax, '
                   'prepend 0o on the number.',
                   {'maxversion': (3, 0)}),

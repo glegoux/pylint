@@ -1,17 +1,16 @@
-# Copyright (c) 2003-2013 LOGILAB S.A. (Paris, FRANCE).
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2006-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2013-2015 Google, Inc.
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2014 Michal Nowikowski <godfryd@gmail.com>
+# Copyright (c) 2015 Mike Frysinger <vapier@gentoo.org>
+# Copyright (c) 2015 Mihai Balint <balint.mihai@gmail.com>
+# Copyright (c) 2015 Fabio Natali <me@fabionatali.com>
+# Copyright (c) 2015 Harut <yes@harutune.name>
+# Copyright (c) 2016 Ashley Whetter <ashley@awhetter.co.uk>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Python code format's checker.
 
 By default try to follow Guido's style guide :
@@ -244,8 +243,12 @@ def _Offsets(*args):
 def _BeforeBlockOffsets(single, with_body):
     """Valid alternative indent offsets for continued lines before blocks.
 
-    :param single: Valid offset for statements on a single logical line.
-    :param with_body: Valid offset for statements on several lines.
+    :param int single: Valid offset for statements on a single logical line.
+    :param int with_body: Valid offset for statements on several lines.
+
+    :returns: A dictionary mapping indent offsets to a string representing
+        whether the indent if for a line or block.
+    :rtype: dict
     """
     return {single: SINGLE_LINE, with_body: WITH_BODY}
 
@@ -401,8 +404,8 @@ class ContinuedLineState(object):
         push_token relies on the caller to filter out those
         interesting tokens.
 
-        :param token: The concrete token
-        :param position: The position of the token in the stream.
+        :param int token: The concrete token
+        :param int position: The position of the token in the stream.
         """
         if _token_followed_by_eol(self._tokens, position):
             self._cont_stack.append(

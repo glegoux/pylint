@@ -1,20 +1,16 @@
-# Copyright (c) 2003-2014 LOGILAB S.A. (Paris, FRANCE).
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2006-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2011-2014 Google, Inc.
+# Copyright (c) 2013-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2015 Florian Bruhin <me@the-compiler.org>
+# Copyright (c) 2016 Glenn Matthews <glenn@e-dad.net>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
 
 from contextlib import contextmanager
 import sys
 import os
+import re
 import tempfile
 from shutil import rmtree
 from os import getcwd, chdir
@@ -29,9 +25,10 @@ from pylint.lint import PyLinter, Run, preprocess_options, \
      ArgumentPreprocessingError
 from pylint.utils import MSG_STATE_SCOPE_CONFIG, MSG_STATE_SCOPE_MODULE, MSG_STATE_CONFIDENCE, \
     MessagesStore, PyLintASTWalker, MessageDefinition, FileState, \
-    build_message_def, tokenize_module, UnknownMessage
+    build_message_def, tokenize_module
+from pylint.exceptions import InvalidMessageError, UnknownMessageError
 from pylint.testutils import TestReporter
-from pylint.reporters import text, html
+from pylint.reporters import text
 from pylint import checkers
 from pylint.checkers.utils import check_messages
 from pylint import interfaces
@@ -140,13 +137,13 @@ class SysPathFixupTC(unittest.TestCase):
 
     def test_no_args(self):
         with lint.fix_import_path([]):
-            self.assertEqual(sys.path, self.fake)
+            self.assertEqual(sys.path, ["."] + self.fake)
         self.assertEqual(sys.path, self.fake)
 
     def test_one_arg(self):
         with tempdir() as chroot:
             create_files(['a/b/__init__.py'])
-            expected = [join(chroot, 'a')] + self.fake
+            expected = [join(chroot, 'a')] + ["."] + self.fake
 
             cases = (
                 ['a/b/'],
@@ -165,7 +162,7 @@ class SysPathFixupTC(unittest.TestCase):
     def test_two_similar_args(self):
         with tempdir() as chroot:
             create_files(['a/b/__init__.py', 'a/c/__init__.py'])
-            expected = [join(chroot, 'a')] + self.fake
+            expected = [join(chroot, 'a')] + ["."] + self.fake
 
             cases = (
                 ['a/b', 'a/c'],
@@ -186,7 +183,7 @@ class SysPathFixupTC(unittest.TestCase):
             expected = [
                 join(chroot, suffix)
                 for suffix in [sep.join(('a', 'b')), 'a', sep.join(('a', 'e'))]
-            ] + self.fake
+            ] + ["."] + self.fake
 
             cases = (
                 ['a/b/c/__init__.py', 'a/d/__init__.py', 'a/e/f.py'],
@@ -375,23 +372,6 @@ class PyLinterTC(unittest.TestCase):
         self.assertTrue(linter.is_message_enabled('W0102', 1))
         self.assertTrue(linter.is_message_enabled('dangerous-default-value', 1))
 
-    def test_lint_ext_module_with_file_output(self):
-        self.linter.set_reporter(text.TextReporter())
-        if sys.version_info < (3, 0):
-            strio = 'StringIO'
-        else:
-            strio = 'io'
-        self.linter.config.files_output = True
-        pylint_strio = 'pylint_%s.txt' % strio
-        files = [pylint_strio, 'pylint_global.txt']
-        for file in files:
-            self.addCleanup(remove, file)
-
-        self.linter.check(strio)
-        self.linter.generate_reports()
-        for f in files:
-            self.assertTrue(os.path.exists(f))
-
     def test_enable_report(self):
         self.assertEqual(self.linter.report_is_enabled('RP0001'), True)
         self.linter.disable('RP0001')
@@ -469,6 +449,26 @@ class PyLinterTC(unittest.TestCase):
             ['C:  1: Line too long (1/2)', 'C:  2: Line too long (3/4)'],
             self.linter.reporter.messages)
 
+    def test_addmessage_invalid(self):
+        self.linter.set_reporter(TestReporter())
+        self.linter.open()
+        self.linter.set_current_module('0123')
+
+        with self.assertRaises(InvalidMessageError) as cm:
+            self.linter.add_message('line-too-long', args=(1,2))
+        self.assertEqual(str(cm.exception),
+                         "Message C0301 must provide line, got None")
+
+        with self.assertRaises(InvalidMessageError) as cm:
+            self.linter.add_message('line-too-long', line=2, node='fake_node', args=(1, 2))
+        self.assertEqual(str(cm.exception),
+                         "Message C0301 must only provide line, got line=2, node=fake_node")
+
+        with self.assertRaises(InvalidMessageError) as cm:
+            self.linter.add_message('C0321')
+        self.assertEqual(str(cm.exception),
+                         "Message C0321 must provide Node, got None")
+
     def test_init_hooks_called_before_load_plugins(self):
         self.assertRaises(RuntimeError,
                           Run, ['--load-plugins', 'unexistant', '--init-hook', 'raise RuntimeError'])
@@ -483,16 +483,6 @@ class PyLinterTC(unittest.TestCase):
             ['C:  2: Line too long (175/100)'],
             self.linter.reporter.messages)
 
-    def test_html_reporter_missing_files(self):
-        output = six.StringIO()
-        self.linter.set_reporter(html.HTMLReporter(output))
-        self.linter.set_option('output-format', 'html')
-        self.linter.check('troppoptop.py')
-        self.linter.generate_reports()
-        value = output.getvalue()
-        self.assertIn('troppoptop.py', value)
-        self.assertIn('fatal', value)
-
     def test_python3_checker_disabled(self):
         checker_names = [c.name for c in self.linter.prepare_checkers()]
         self.assertNotIn('python3', checker_names)
@@ -501,6 +491,22 @@ class PyLinterTC(unittest.TestCase):
         checker_names = [c.name for c in self.linter.prepare_checkers()]
         self.assertIn('python3', checker_names)
 
+    def test_full_documentation(self):
+        out = six.StringIO()
+        self.linter.print_full_documentation(out)
+        output = out.getvalue()
+        # A few spot checks only
+        for re_str in [
+            # autogenerated text
+            "^Pylint global options and switches$",
+            "Verbatim name of the checker is ``python3``",
+            # messages
+            "^:old-octal-literal \(E1608\):",
+            # options
+            "^:dummy-variables-rgx:",
+        ]:
+            regexp = re.compile(re_str, re.MULTILINE)
+            self.assertRegexpMatches(output, regexp)
 
 class ConfigTC(unittest.TestCase):
 
@@ -634,7 +640,7 @@ class MessagesStoreTC(unittest.TestCase):
     def test_check_message_id(self):
         self.assertIsInstance(self.store.check_message_id('W1234'),
                               MessageDefinition)
-        self.assertRaises(UnknownMessage,
+        self.assertRaises(UnknownMessageError,
                           self.store.check_message_id, 'YB12')
 
     def test_message_help(self):
@@ -680,12 +686,26 @@ class MessagesStoreTC(unittest.TestCase):
         self.assertEqual('msg-symbol',
                          self.store.check_message_id('old-bad-name').symbol)
 
+    def test_add_renamed_message_invalid(self):
+        # conflicting message ID
+        with self.assertRaises(InvalidMessageError) as cm:
+            self.store.add_renamed_message(
+                    'W1234', 'old-msg-symbol', 'duplicate-keyword-arg')
+        self.assertEqual(str(cm.exception),
+                         "Message id 'W1234' is already defined")
+        # conflicting message symbol
+        with self.assertRaises(InvalidMessageError) as cm:
+            self.store.add_renamed_message(
+                'W1337', 'msg-symbol', 'duplicate-keyword-arg')
+        self.assertEqual(str(cm.exception),
+                         "Message symbol 'msg-symbol' is already defined")
+
     def test_renamed_message_register(self):
         self.assertEqual('msg-symbol',
                          self.store.check_message_id('W0001').symbol)
         self.assertEqual('msg-symbol',
                          self.store.check_message_id('old-symbol').symbol)
 
-   
+
 if __name__ == '__main__':
     unittest.main()

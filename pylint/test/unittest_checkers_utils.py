@@ -1,24 +1,15 @@
-# Copyright (c) 2003-2005 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2013-2014 Google, Inc.
+# Copyright (c) 2013-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Tests for the pylint.checkers.utils module."""
 
 import unittest
 import warnings
 
-from astroid import test_utils
+import astroid
 
 from pylint.checkers import utils
 from pylint import __pkginfo__
@@ -34,20 +25,20 @@ class UtilsTC(unittest.TestCase):
         self.assertEqual(utils.is_builtin('mybuiltin'), False)
 
     def testGetArgumentFromCall(self):
-        node = test_utils.extract_node('foo(bar=3)')
+        node = astroid.extract_node('foo(bar=3)')
         self.assertIsNotNone(utils.get_argument_from_call(node, keyword='bar'))
         with self.assertRaises(utils.NoSuchArgumentError):
-            node = test_utils.extract_node('foo(3)')
+            node = astroid.extract_node('foo(3)')
             utils.get_argument_from_call(node, keyword='bar')
         with self.assertRaises(utils.NoSuchArgumentError):
-            node = test_utils.extract_node('foo(one=a, two=b, three=c)')
+            node = astroid.extract_node('foo(one=a, two=b, three=c)')
             utils.get_argument_from_call(node, position=1)
-        node = test_utils.extract_node('foo(a, b, c)')
+        node = astroid.extract_node('foo(a, b, c)')
         self.assertIsNotNone(utils.get_argument_from_call(node, position=1))
-        node = test_utils.extract_node('foo(a, not_this_one=1, this_one=2)')
+        node = astroid.extract_node('foo(a, not_this_one=1, this_one=2)')
         arg = utils.get_argument_from_call(node, position=2, keyword='this_one')
         self.assertEqual(2, arg.value)
-        node = test_utils.extract_node('foo(a)')
+        node = astroid.extract_node('foo(a)')
         with self.assertRaises(utils.NoSuchArgumentError):
             utils.get_argument_from_call(node, position=1)
         with self.assertRaises(ValueError):
@@ -57,7 +48,7 @@ class UtilsTC(unittest.TestCase):
         self.assertEqual(name.name, 'a')
 
     def test_error_of_type(self):
-        nodes = test_utils.extract_node("""
+        nodes = astroid.extract_node("""
         try: pass
         except AttributeError: #@
              pass
@@ -71,10 +62,10 @@ class UtilsTC(unittest.TestCase):
         self.assertTrue(utils.error_of_type(nodes[0], (AttributeError, )))
         self.assertFalse(utils.error_of_type(nodes[0], Exception))
         self.assertTrue(utils.error_of_type(nodes[1], Exception))
-        self.assertTrue(utils.error_of_type(nodes[2], ImportError))
+        self.assertFalse(utils.error_of_type(nodes[2], ImportError))
 
     def test_node_ignores_exception(self):
-        nodes = test_utils.extract_node("""
+        nodes = astroid.extract_node("""
         try:
             1/0 #@
         except ZeroDivisionError:
@@ -84,7 +75,7 @@ class UtilsTC(unittest.TestCase):
         except Exception:
             pass
         try:
-            1/0 #@
+            2/0 #@
         except:
             pass
         try:
@@ -93,8 +84,8 @@ class UtilsTC(unittest.TestCase):
             pass
         """)
         self.assertTrue(utils.node_ignores_exception(nodes[0], ZeroDivisionError))
-        self.assertTrue(utils.node_ignores_exception(nodes[1], ZeroDivisionError))
-        self.assertTrue(utils.node_ignores_exception(nodes[2], ZeroDivisionError))
+        self.assertFalse(utils.node_ignores_exception(nodes[1], ZeroDivisionError))
+        self.assertFalse(utils.node_ignores_exception(nodes[2], ZeroDivisionError))
         self.assertFalse(utils.node_ignores_exception(nodes[3], ZeroDivisionError))
 
 

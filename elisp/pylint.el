@@ -1,8 +1,8 @@
 ;;; pylint.el --- minor mode for running `pylint'
 
 ;; Copyright (c) 2009, 2010 Ian Eure <ian.eure@gmail.com>
-
 ;; Author: Ian Eure <ian.eure@gmail.com>
+;; Maintainer: Jonathan Kotta <jpkotta@gmail.com>
 
 ;; Keywords: languages python
 ;; Version: 1.02
@@ -30,6 +30,10 @@
 ;;   (autoload 'pylint "pylint")
 ;;   (add-hook 'python-mode-hook 'pylint-add-menu-items)
 ;;   (add-hook 'python-mode-hook 'pylint-add-key-bindings)
+;;
+;; There is also a handy command `pylint-insert-ignore-comment' that
+;; makes it easy to insert comments of the form `# pylint:
+;; ignore=msg1,msg2,...'.
 
 ;;; Code:
 
@@ -60,8 +64,18 @@ Notice that using \\[next-error] or \\[compile-goto-error] modifies
   :type '(repeat string)
   :group 'pylint)
 
+(defcustom pylint-use-python-indent-offset nil
+  "If non-nil, use `python-indent-offset' to set indent-string."
+  :type 'boolean
+  :group 'pylint)
+
 (defcustom pylint-command "pylint"
   "PYLINT command."
+  :type '(file)
+  :group 'pylint)
+
+(defcustom pylint-alternate-pylint-command "pylint2"
+  "Command for pylint when invoked with C-u."
   :type '(file)
   :group 'pylint)
 
@@ -124,7 +138,7 @@ the selected messages.
 
 With prefix argument, only insert a comma-separated list (for
 appending to an existing list)."
-  (interactive "*p")
+  (interactive "*P")
   (unless pylint--messages-list
     (pylint--create-messages-list))
   (setq pylint--messages-list
@@ -132,8 +146,8 @@ appending to an existing list)."
   (let ((msgs ())
         (msg "")
         (prefix (if arg
-                    "# pylint: disable="
-                  ","))
+                    ","
+                  "# pylint: disable="))
         (sentinel "[DONE]"))
     (while (progn
              (setq msg (completing-read
@@ -170,8 +184,13 @@ appending to an existing list)."
   "Keymap for PYLINT buffers.
 `compilation-minor-mode-map' is a cdr of this.")
 
+(defun pylint--make-indent-string ()
+  "Make a string for the `--indent-string' option."
+  (format "--indent-string='%s'"
+          (make-string python-indent-offset ?\ )))
+
 ;;;###autoload
-(defun pylint ()
+(defun pylint (&optional arg)
   "Run PYLINT, and collect output in a buffer, much like `compile'.
 
 While pylint runs asynchronously, you can use \\[next-error] (M-x next-error),
@@ -179,18 +198,25 @@ or \\<pylint-mode-map>\\[compile-goto-error] in the grep \
 output buffer, to go to the lines where pylint found matches.
 
 \\{pylint-mode-map}"
-  (interactive)
+  (interactive "P")
 
   (save-some-buffers (not pylint-ask-about-save) nil)
-  (let* ((tramp (tramp-tramp-file-p (buffer-file-name)))
-         (file (or (and tramp
-                        (aref (tramp-dissect-file-name (buffer-file-name)) 3))
-                   (buffer-file-name)))
+  (let* ((filename (buffer-file-name))
+         (filename (or (and (tramp-tramp-file-p filename)
+                         (aref (tramp-dissect-file-name filename) 3))
+                      filename))
+         (filename (shell-quote-argument filename))
+         (pylint-command (if arg
+                             pylint-alternate-pylint-command
+                           pylint-command))
+         (pylint-options (if (not pylint-use-python-indent-offset)
+                             pylint-options
+                           (append pylint-options
+                                   (list (pylint--make-indent-string)))))
          (command (mapconcat
                    'identity
-                   (list pylint-command
-                         (mapconcat 'identity pylint-options " ")
-                         (shell-quote-argument file)) " ")))
+                   (append `(,pylint-command) pylint-options `(,filename))
+                   " ")))
 
     (compilation-start command 'pylint-mode)))
 

@@ -1,3 +1,8 @@
+# Copyright (c) 2015 Aru Sahni <arusahni@gmail.com>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Unit tests for the config module."""
 
 import re

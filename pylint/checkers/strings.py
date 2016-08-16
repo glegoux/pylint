@@ -1,20 +1,11 @@
-# Copyright (c) 2009-2010 Arista Networks, Inc. - James Lingard
-# Copyright (c) 2004-2013 LOGILAB S.A. (Paris, FRANCE).
-# Copyright 2012 Google Inc.
-#
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2009-2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2013-2014 Google, Inc.
+# Copyright (c) 2013-2016 Claudiu Popa <pcmanticore@gmail.com>
+
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """Checker for string formatting operations.
 """
 
@@ -61,7 +52,7 @@ MSGS = {
     'W1301': ("Unused key %r in format string dictionary",
               "unused-format-string-key",
               "Used when a format string that uses named conversion specifiers \
-              is used with a dictionary that conWtains keys not required by the \
+              is used with a dictionary that contains keys not required by the \
               format string."),
     'E1304': ("Missing key %r in format string dictionary",
               "missing-format-string-key",
@@ -98,7 +89,7 @@ MSGS = {
     'W1305': ("Format string contains both automatic field numbering "
               "and manual field specification",
               "format-combined-specification",
-              "Usen when a PEP 3101 format string contains both automatic "
+              "Used when a PEP 3101 format string contains both automatic "
               "field numbering (e.g. '{}') and manual field "
               "specification (e.g. '{0}').",
               {'minversion': (2, 7)}),

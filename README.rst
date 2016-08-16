@@ -9,6 +9,17 @@ README for Pylint - http://www.pylint.org/
     :alt: AppVeyor Build Status
     :target: https://ci.appveyor.com/project/PCManticore/pylint
 
+.. image:: https://coveralls.io/repos/github/PyCQA/pylint/badge.svg?branch=master
+    :target: https://coveralls.io/github/PyCQA/pylint?branch=master
+
+.. image:: https://img.shields.io/pypi/v/pylint.svg
+    :alt: Pypi Package version
+    :target: https://pypi.python.org/pypi/pylint
+
+.. image:: https://readthedocs.org/projects/pylint/badge/?version=latest
+    :target: http://pylint.readthedocs.io/en/latest/?badge=latest
+    :alt: Documentation Status
+
 Pylint is a Python source code analyzer which looks for programming errors,
 helps enforcing a coding standard and sniffs for some code smells (as defined in
 Martin Fowler's Refactoring book).
@@ -18,7 +29,7 @@ minimally sized program. It's highly configurable and handle pragmas to control
 it from within your code. Additionally, it is possible to write plugins to add
 your own checks.
 
-It's a free software distributed under the GNU Public Licence.
+It's a free software distributed under the GNU General Public Licence.
 
 Development is hosted on GitHub: https://github.com/PyCQA/pylint/
 
@@ -37,11 +48,18 @@ Installation should be as simple as ::
 
     python -m pip install astroid
 
+Pylint requires isort package (the later the better).
+
+* https://github.com/timothycrosley/isort
+
+Installation should be as simple as ::
+
+    python -m pip install isort
+
 
 If you want to install from a source distribution, extract the tarball and run
 the following commands ::
 
-    hg update master
     python setup.py install
 
 You'll have to install dependencies in a similar way. For debian and
@@ -60,4 +78,3 @@ Pylint is shipped with following additional commands:
 * pyreverse: an UML diagram generator
 * symilar: an independent similarities checker
 * epylint: Emacs and Flymake compatible Pylint
-* pylint-gui: a graphical interface

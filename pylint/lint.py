@@ -1,18 +1,17 @@
-# Copyright (c) 2003-2014 LOGILAB S.A. (Paris, FRANCE).
-# http://www.logilab.fr/ -- mailto:contact@logilab.fr
-#
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
+# Copyright (c) 2006-2015 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2011-2014 Google, Inc.
+# Copyright (c) 2012 FELD Boris <lothiraldan@gmail.com>
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2014-2015 Michal Nowikowski <godfryd@gmail.com>
+# Copyright (c) 2015 Mihai Balint <balint.mihai@gmail.com>
+# Copyright (c) 2015 Simu Toni <simutoni@gmail.com>
+# Copyright (c) 2015 Aru Sahni <arusahni@gmail.com>
+# Copyright (c) 2015-2016 Florian Bruhin <me@the-compiler.org>
+# Copyright (c) 2016 Glenn Matthews <glenn@e-dad.net>
+
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
 """ %prog [options] module_or_package
 
   Check that a module satisfies a coding standard (and more !).
@@ -47,6 +46,7 @@ from astroid import modutils
 from pylint import checkers
 from pylint import interfaces
 from pylint import reporters
+from pylint import exceptions
 from pylint import utils
 from pylint import config
 from pylint.__pkginfo__ import version
@@ -54,10 +54,7 @@ from pylint.reporters.ureports import nodes as report_nodes
 
 
 MANAGER = astroid.MANAGER
-INCLUDE_IDS_HELP = ("Deprecated. It was used to include message\'s "
-                    "id in output. Use --msg-template instead.")
-SYMBOLS_HELP = ("Deprecated. It was used to include symbolic ids of "
-                "messages in output. Use --msg-template instead.")
+
 
 def _get_new_args(message):
     location = (
@@ -226,7 +223,7 @@ if multiprocessing is not None:
             if self._plugins:
                 linter.load_plugin_modules(self._plugins)
 
-            linter.load_configuration(**self._config)
+            linter.load_configuration_from_config(self._config)
             linter.set_reporter(reporters.CollectingReporter())
 
             # Enable the Python 3 checker mode. This option is
@@ -299,20 +296,12 @@ class PyLinter(config.OptionsManagerMixIn,
                   'short': 'f',
                   'group': 'Reports',
                   'help' : 'Set the output format. Available formats are text,'
-                           ' parseable, colorized, msvs (visual studio) and html. You '
-                           'can also give a reporter class, eg mypackage.mymodule.'
+                           ' parseable, colorized, json and msvs (visual studio).'
+                           'You can also give a reporter class, eg mypackage.mymodule.'
                            'MyReporterClass.'}),
 
-                ('files-output',
-                 {'default': 0, 'type' : 'yn', 'metavar' : '<y_or_n>',
-                  'group': 'Reports', 'level': 1,
-                  'help' : 'Put messages in a separate file for each module / '
-                           'package specified on the command line instead of printing '
-                           'them on stdout. Reports (if any) will be written in a file '
-                           'name "pylint_global.[txt|html]".'}),
-
                 ('reports',
-                 {'default': 1, 'type' : 'yn', 'metavar' : '<y_or_n>',
+                 {'default': False, 'type' : 'yn', 'metavar' : '<y_or_n>',
                   'short': 'r',
                   'group': 'Reports',
                   'help' : 'Tells whether to display a full report or only the '
@@ -330,8 +319,11 @@ class PyLinter(config.OptionsManagerMixIn,
                            'warnings messages and the total number of '
                            'statements analyzed. This is used by the global '
                            'evaluation report (RP0004).'}),
-
-                ('comment', utils.deprecated_option(opt_type='yn')),
+                ('score',
+                 {'default': True, 'type': 'yn', 'metavar': '<y_or_n>',
+                  'short': 's',
+                  'group': 'Reports',
+                  'help': 'Activate the evaluation score.'}),
 
                 ('confidence',
                  {'type' : 'multiple_choice', 'metavar': '<levels>',
@@ -348,7 +340,9 @@ class PyLinter(config.OptionsManagerMixIn,
                   'group': 'Messages control',
                   'help' : 'Enable the message, report, category or checker with the '
                            'given id(s). You can either give multiple identifier '
-                           'separated by comma (,) or put this option multiple time. '
+                           'separated by comma (,) or put this option multiple time '
+                           '(only on the command line, not in the configuration file '
+                           'where it should appear only once). '
                            'See also the "--disable" option for examples. '}),
 
                 ('disable',
@@ -396,19 +390,6 @@ class PyLinter(config.OptionsManagerMixIn,
                            ' from where C extensions may be loaded. Extensions are'
                            ' loading into the active Python interpreter and may run'
                            ' arbitrary code')}
-                ),
-
-                ('optimize-ast',
-                 {'type': 'yn', 'metavar': '<yn>', 'default': False,
-                  'help': ('Allow optimization of some AST trees. This will '
-                           'activate a peephole AST optimizer, which will '
-                           'apply various small optimizations. For instance, '
-                           'it can be used to obtain the result of joining '
-                           'multiple strings with the addition operator. '
-                           'Joining a lot of strings can lead to a maximum '
-                           'recursion error in Pylint and this flag can prevent '
-                           'that. It has one side effect, the resulting AST '
-                           'will be different than the one from reality.')}
                 ),
                )
 
@@ -459,8 +440,6 @@ class PyLinter(config.OptionsManagerMixIn,
                          report_messages_by_module_stats),
                         ('RP0003', 'Messages',
                          report_messages_stats),
-                        ('RP0004', 'Global evaluation',
-                         self.report_evaluation),
                        )
         self.register_checker(self)
         self._dynamic_plugins = set()
@@ -579,7 +558,8 @@ class PyLinter(config.OptionsManagerMixIn,
 
     def disable_noerror_messages(self):
         for msgcat, msgids in six.iteritems(self.msgs_store._msgs_by_category):
-            if msgcat == 'E':
+            # enable only messages with 'error' severity and above ('fatal')
+            if msgcat in ['E', 'F']:
                 for msgid in msgids:
                     self.enable(msgid)
             else:
@@ -606,6 +586,7 @@ class PyLinter(config.OptionsManagerMixIn,
             self.disable('python3')
         self.set_option('reports', False)
         self.set_option('persistent', False)
+        self.set_option('score', False)
 
     def python3_porting_mode(self):
         """Disable all other checkers and enable Python 3 warnings."""
@@ -673,7 +654,7 @@ class PyLinter(config.OptionsManagerMixIn,
                             self._ignore_file = True
                             return
                         meth(msgid, 'module', start[0])
-                    except utils.UnknownMessage:
+                    except exceptions.UnknownMessageError:
                         self.add_message('bad-option-value', args=msgid, line=start[0])
             else:
                 self.add_message('unrecognized-inline-option', args=opt, line=start[0])
@@ -693,9 +674,8 @@ class PyLinter(config.OptionsManagerMixIn,
         # get needed checkers
         neededcheckers = [self]
         for checker in self.get_checkers()[1:]:
-            # fatal errors should not trigger enable / disabling a checker
             messages = set(msg for msg in checker.msgs
-                           if msg[0] != 'F' and self.is_message_enabled(msg))
+                           if self.is_message_enabled(msg))
             if (messages or
                     any(self.report_is_enabled(r[0]) for r in checker.reports)):
                 neededcheckers.append(checker)
@@ -741,7 +721,7 @@ class PyLinter(config.OptionsManagerMixIn,
                 self._parallel_check(files_or_modules)
 
     def _get_jobs_config(self):
-        child_config = {}
+        child_config = collections.OrderedDict()
         filter_options = {'long-help'}
         filter_options.update((opt_name for opt_name, _ in self._external_opts))
         for opt_providers in six.itervalues(self._all_options):
@@ -850,9 +830,7 @@ class PyLinter(config.OptionsManagerMixIn,
             modname, filepath = descr['name'], descr['path']
             if not descr['isarg'] and not self.should_analyze_file(modname, filepath):
                 continue
-            if self.config.files_output:
-                reportfile = 'pylint_%s.%s' % (modname, self.reporter.extension)
-                self.reporter.set_output(open(reportfile, 'w'))
+
             self.set_current_module(modname, filepath)
             # get the module representation
             ast_node = self.get_ast(filepath, modname)
@@ -955,7 +933,6 @@ class PyLinter(config.OptionsManagerMixIn,
         self.stats = {'by_module' : {},
                       'by_msg' : {},
                      }
-        MANAGER.optimize_ast = self.config.optimize_ast
         MANAGER.always_load_extensions = self.config.unsafe_load_any_extension
         MANAGER.extension_package_whitelist.update(
             self.config.extension_pkg_whitelist)
@@ -977,27 +954,26 @@ class PyLinter(config.OptionsManagerMixIn,
             self.reporter.on_close(self.stats, previous_stats)
             if self.config.reports:
                 sect = self.make_reports(self.stats, previous_stats)
-                if self.config.files_output:
-                    filename = 'pylint_global.' + self.reporter.extension
-                    self.reporter.set_output(open(filename, 'w'))
             else:
                 sect = report_nodes.Section()
+
             if self.config.reports:
                 self.reporter.display_reports(sect)
+            self._report_evaluation()
             # save results if persistent run
             if self.config.persistent:
                 config.save_results(self.stats, self.file_state.base_name)
         else:
             self.reporter.on_close(self.stats, {})
 
-    # specific reports ########################################################
-
-    def report_evaluation(self, sect, stats, previous_stats):
+    def _report_evaluation(self):
         """make the global evaluation report"""
         # check with at least check 1 statements (usually 0 when there is a
         # syntax error preventing pylint from further processing)
-        if stats['statement'] == 0:
-            raise utils.EmptyReport()
+        previous_stats = config.load_results(self.file_state.base_name)
+        if self.stats['statement'] == 0:
+            return
+
         # get a global note for the code
         evaluation = self.config.evaluation
         try:
@@ -1005,12 +981,15 @@ class PyLinter(config.OptionsManagerMixIn,
         except Exception as ex: # pylint: disable=broad-except
             msg = 'An exception occurred while rating: %s' % ex
         else:
-            stats['global_note'] = note
+            self.stats['global_note'] = note
             msg = 'Your code has been rated at %.2f/10' % note
             pnote = previous_stats.get('global_note')
             if pnote is not None:
                 msg += ' (previous run: %.2f/10, %+.2f)' % (pnote, note - pnote)
-        sect.append(report_nodes.Text(msg))
+
+        if self.config.score:
+            sect = report_nodes.EvaluationSection(msg)
+            self.reporter.display_reports(sect)
 
 # some reporting functions ####################################################
 
@@ -1026,7 +1005,7 @@ def report_messages_stats(sect, stats, _):
     """make messages type report"""
     if not stats['by_msg']:
         # don't print this report when we didn't detected any errors
-        raise utils.EmptyReport()
+        raise exceptions.EmptyReportError()
     in_order = sorted([(value, msg_id)
                        for msg_id, value in six.iteritems(stats['by_msg'])
                        if not msg_id.startswith('I')])
@@ -1040,7 +1019,7 @@ def report_messages_by_module_stats(sect, stats, _):
     """make errors / warnings by modules report"""
     if len(stats['by_module']) == 1:
         # don't print this report when we are analysing a single module
-        raise utils.EmptyReport()
+        raise exceptions.EmptyReportError()
     by_mod = collections.defaultdict(dict)
     for m_type in ('fatal', 'error', 'warning', 'refactor', 'convention'):
         total = stats[m_type]
@@ -1069,7 +1048,7 @@ def report_messages_by_module_stats(sect, stats, _):
         for val in line[:-1]:
             lines.append('%.2f' % val)
     if len(lines) == 5:
-        raise utils.EmptyReport()
+        raise exceptions.EmptyReportError()
     sect.append(report_nodes.Table(children=lines, cols=5, rheaders=1))
 
 
@@ -1122,7 +1101,7 @@ def fix_import_path(args):
     Within this context, each of the given arguments is importable.
     Paths are added to sys.path in corresponding order to the arguments.
     We avoid adding duplicate directories to sys.path.
-    `sys.path` is reset to its original value upon exitign this context.
+    `sys.path` is reset to its original value upon exiting this context.
     """
     orig = list(sys.path)
     changes = []
@@ -1132,7 +1111,7 @@ def fix_import_path(args):
             continue
         else:
             changes.append(path)
-    sys.path[:] = changes + sys.path
+    sys.path[:] = changes + ["."] + sys.path
     try:
         yield
     finally:
@@ -1263,8 +1242,7 @@ group are mutually exclusive.'),
 'been issued by analysing pylint output status code\n',
                                 level=1)
         # read configuration
-        linter.disable('suppressed-message')
-        linter.disable('useless-suppression')
+        linter.disable('I')
         linter.read_config_file()
         config_parser = linter.cfgfile_parser
         # run init hook, if present, before loading plugins

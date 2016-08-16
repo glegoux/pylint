@@ -18,31 +18,6 @@ standard, and tries to enforce a coding style.
 
 .. _`static code checker`: http://en.wikipedia.org/wiki/Static_code_analysis
 
-1.2 How is Pylint different from Pychecker?
--------------------------------------------
-
-A major difference between Pylint and Pychecker_ is that Pylint checks for
-style issues, while Pychecker explicitly does not. There are a few other
-differences, such as the fact that Pylint does not import live modules while
-Pychecker does (see `6.2 Why does Pychecker catch problems with imports that
-Pylint doesn't?`_).
-
-.. _Pychecker: http://pychecker.sf.net
-
-1.3 Who wrote Pylint?
----------------------
-
-Pylint's main author and maintainer for the first ten years of its life has been
-Sylvain Thénault, while he worked at Logilab_ where the project was born. For a
-full list of contributors, see the "Contributors" section of Pylint's README
-file.
-
-.. _Logilab: http://www.logilab.fr/
-
-1.4 Who uses Pylint?
---------------------
-
-Everybody knows someone who uses Pylint.
 
 2. Installation
 ===============
@@ -55,22 +30,22 @@ Everything should be explained on http://docs.pylint.org/installation
 2.2 What kind of versioning system does Pylint use?
 ---------------------------------------------------
 
-Pylint uses the Mercurial_ distributed version control system. The URL of the
-repository is: https://bitbucket.org/logilab/pylint. To get the latest version of
+Pylint uses the git distributed version control system. The URL of the
+repository is: https://github.com/pycqa/pylint . To get the latest version of
 Pylint from the repository, simply invoke ::
 
-    hg clone https://bitbucket.org/logilab/pylint
+    git clone https://github.com/pycqa/pylint
 
-.. _Mercurial: http://mercurial.selenic.com/
+.. _git: http://git-scm.com/
 
 2.3 What are Pylint's dependencies?
 -----------------------------------
 
-Pylint requires the latest `astroid`_ and `logilab-common`_ packages. It should be
-compatible with any Python version greater than 2.7.0.
+Pylint depends on astroid_ and a couple of other packages.
+It should be compatible with any Python version greater than 2.7.0 and
+it is also working on PyPy.
 
-.. _`astroid`: https://bitbucket.org/logilab/astroid
-.. _`logilab-common`: http://www.logilab.org/project/logilab-common
+.. _`astroid`: https://github.com/PyCQA/astroid
 
 2.4 What versions of Python is Pylint supporting?
 --------------------------------------------------
@@ -80,9 +55,6 @@ Using this strategy really helps in maintaining a code base compatible
 with both versions and from this benefits not only the maintainers,
 but the end users as well, because it's easier to add and test
 new features.
-If support for Python 2.6 is absolutely required, then the version
-from pylint-1.3 branch can be used. It will receive backports of
-bug fixes for a while.
 
 
 3. Running Pylint
@@ -100,8 +72,8 @@ the file's path using the python path. Some examples :
 directory is automatically added on top of the python path
 
 "pylint directory/mymodule.py" will work if "directory" is a python
-package (i.e. has an __init__.py file) or if "directory" is in the
-python path.
+package (i.e. has an __init__.py file), an implicit namespace package
+or if "directory" is in the python path.
 
 "pylint /whatever/directory/mymodule.py" will work if either:
 
@@ -111,6 +83,8 @@ python path.
 
 	- "directory" is a python package and "/whatever" is in the python
           path
+
+        - "directory" is an implicit namespace package and is in the python path.
 
 	- "directory" is a python package and your cwd is "/whatever" and so
           on...
@@ -172,9 +146,9 @@ module. Pylint 0.26.1 and up have renamed that directive to
 "#pylint: skip-file" (but the first version will be kept for backward
 compatibility).
 
-In order to ease finding which modules are ignored a Information-level message
-`file-ignored` is emited. With recent versions of Pylint, if you use the old
-syntax, an additional `deprecated-disable-all` message is emited.
+In order to ease finding which modules are ignored an Information-level message
+`file-ignored` is emitted. With recent versions of Pylint, if you use the old
+syntax, an additional `deprecated-disable-all` message is emitted.
 
 4.4 Do I have to remember all these numbers?
 --------------------------------------------
@@ -239,34 +213,12 @@ values really bugs you, you can set the formula to be the maximum of 0 and the
 above expression.
 
 
-6.2 Why does Pychecker catch problems with imports that Pylint doesn't?
-------------------------------------------------------------------------
-
-Pychecker and Pylint use different approaches.  pychecker
-imports the modules and rummages around in the result, hence it sees my
-mangled sys.path.  Pylint doesn't import any of the candidate modules and
-thus doesn't include any of import's side effects (good and bad).  It
-traverses an AST representation of the code.
-
-6.3 Pylint keeps crashing with `Maximum recursion depth exceeded`
------------------------------------------------------------------
-
-Pylint can crash with this error if you have a string in your analyzed
-program, created by joining a lot of strings with the addition operator.
-Due to how Pylint works, visiting nodes on a AST tree and due to how
-the BinOp node is represented (the node which represents the string '1+1'
-for instance), the same visit method will be called over and over again, leading
-to a maximum recursion error. You can alleviate this problem by passing
-the flag `--optimize-ast=y` to Pylint. This will activate an optimization
-which will transform such AST subtrees into the final resulting string.
-This flag is off by default. If this is not the case, please report a bug!
-
-6.4 I think I found a bug in Pylint. What should I do?
+6.2 I think I found a bug in Pylint. What should I do?
 -------------------------------------------------------
 
 Read http://docs.pylint.org/contribute#bug-reports-feedback
 
-6.5 I have a question about Pylint that isn't answered here.
+6.3 I have a question about Pylint that isn't answered here.
 ------------------------------------------------------------
 
 Read http://docs.pylint.org/contribute#mailing-lists

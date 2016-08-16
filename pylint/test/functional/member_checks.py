@@ -1,5 +1,5 @@
 # pylint: disable=print-statement,missing-docstring,no-self-use,too-few-public-methods,bare-except,broad-except
-# pylint: disable=using-constant-test,expression-not-assigned, redefined-variable-type
+# pylint: disable=using-constant-test,expression-not-assigned, assigning-non-slot, unused-variable
 from __future__ import print_function
 
 class Provider(object):
@@ -94,16 +94,6 @@ except AttributeError:
     pass
 
 try:
-    Client().indeed()
-except Exception:
-    pass
-
-try:
-    Client().indeed()
-except:
-    pass
-
-try:
     Client().indeed() # [no-member]
 except ImportError:
     pass
@@ -131,7 +121,7 @@ try:
     Client().indeed()
 except AttributeError:
     try:
-        Client.missing()
+        Client.missing() # [no-member]
     except Exception:
         pass
 
@@ -179,3 +169,10 @@ class NoDunderNameInInstance(object):
     """Emit a warning when accessing __name__ from an instance."""
     def __init__(self):
         self.var = self.__name__ # [no-member]
+
+
+class InvalidAccessBySlots(object):
+    __slots__ = ('a', )
+    def __init__(self):
+        var = self.teta # [no-member]
+        self.teta = 24

@@ -1,25 +1,16 @@
-# This program is free software; you can redistribute it and/or modify it under
-# the terms of the GNU General Public License as published by the Free Software
-# Foundation; either version 2 of the License, or (at your option) any later
-# version.
-#
-# This program is distributed in the hope that it will be useful, but WITHOUT
-# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License along with
-# this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
-""" Copyright (c) 2000-2011 LOGILAB S.A. (Paris, FRANCE).
- http://www.logilab.fr/ -- mailto:contact@logilab.fr
+# Copyright (c) 2009-2011, 2014 LOGILAB S.A. (Paris, FRANCE) <contact@logilab.fr>
+# Copyright (c) 2013-2014 Google, Inc.
+# Copyright (c) 2014-2016 Claudiu Popa <pcmanticore@gmail.com>
+# Copyright (c) 2015 Harut <yes@harutune.name>
 
-Check format checker helper functions
-"""
+# Licensed under the GPL: https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+# For details: https://github.com/PyCQA/pylint/blob/master/COPYING
+
+"""Check format checker helper functions"""
 
 from __future__ import unicode_literals
 
 import astroid
-from astroid import test_utils
 
 from pylint.checkers.format import *
 
@@ -32,7 +23,7 @@ class MultiStatementLineTest(CheckerTestCase):
   CHECKER_CLASS = FormatChecker
 
   def testSingleLineIfStmts(self):
-      stmt = test_utils.extract_node("""
+      stmt = astroid.extract_node("""
       if True: pass  #@
       """)
       with self.assertAddsMessages(Message('multiple-statements', node=stmt.body[0])):
@@ -42,7 +33,7 @@ class MultiStatementLineTest(CheckerTestCase):
       with self.assertNoMessages():
           self.checker.process_tokens([])
           self.checker.visit_default(stmt.body[0])
-      stmt = test_utils.extract_node("""
+      stmt = astroid.extract_node("""
       if True: pass  #@
       else:
         pass
@@ -52,7 +43,7 @@ class MultiStatementLineTest(CheckerTestCase):
           self.checker.visit_default(stmt.body[0])
 
   def testTryExceptFinallyNoMultipleStatement(self):
-      tree = test_utils.extract_node("""
+      tree = astroid.extract_node("""
       try:  #@
         pass
       except:
